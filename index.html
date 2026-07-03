@@ -22,6 +22,7 @@
     --cyan:    #25C9D6;
     --magenta: #FF2E92;
     --orange:  #FF6A00;
+    --brand:   #4A76B0;
     --radius:  10px;
     --font: 'Segoe UI', 'Arial Narrow', Arial, sans-serif;
   }
@@ -53,10 +54,10 @@
   }
   .logo-mark {
     width: 30px; height: 30px;
-    border: 2px solid var(--cyan);
+    border: 2px solid var(--brand);
     border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: var(--cyan);
+    font-size: 15px; font-weight: 800; color: var(--brand);
     flex-shrink: 0;
   }
   .header-title {
@@ -65,6 +66,13 @@
     letter-spacing: 0.13em;
     text-transform: uppercase;
     line-height: 1.3;
+  }
+  .header-title.brand {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: var(--brand);
   }
   .header-sub {
     font-size: 9px;
@@ -352,6 +360,35 @@
     margin-top: 4px;
   }
 
+  /* ── LOGIN ── */
+  #app-shell { display: none; height: 100%; flex-direction: column; }
+  #login-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .login-box {
+    width: 100%;
+    max-width: 340px;
+  }
+  .login-logo {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--brand);
+    text-align: center;
+    margin-bottom: 2px;
+  }
+  .login-sub {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--label);
+    margin-bottom: 28px;
+  }
+
   /* ── BOTTOM NAV ── */
   nav {
     position: fixed;
@@ -404,11 +441,29 @@
 </head>
 <body>
 
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Logisnext</div>
+    <div class="login-sub">JAULA — Acceso</div>
+    <div class="form-group">
+      <label for="login-correo">Correo</label>
+      <input type="email" id="login-correo" placeholder="usuario@logisnext.com" inputmode="email" autocapitalize="off">
+    </div>
+    <div class="form-group">
+      <label for="login-password">Contraseña</label>
+      <input type="password" id="login-password" placeholder="••••••••">
+    </div>
+    <button class="btn" onclick="doLogin()">Entrar</button>
+    <div class="test-result" id="login-result"></div>
+  </div>
+</div>
+
+<div id="app-shell">
 <header>
-  <div class="logo-mark">LN</div>
+  <div class="logo-mark">L</div>
   <div>
-    <div class="header-title">Logisnext — Alertas</div>
-    <div class="header-sub">KPI · Mantenimiento</div>
+    <div class="header-title brand">Logisnext</div>
+    <div class="header-sub">JAULA · Alertas y Mantenimiento</div>
   </div>
   <div class="header-spacer"></div>
   <div class="conn-dot" id="conn-dot">—</div>
@@ -417,6 +472,11 @@
 <main>
   <div class="error-banner" id="error-banner">
     ⚠ Sin conexión con el servidor. Revisa la URL en Ajustes y que el móvil esté en la misma red que el servidor MES.
+  </div>
+
+  <div class="empty-state" id="no-access" style="display:none; margin-top:16px;">
+    <div class="big" style="color:var(--amber)">⚠ Sin vistas asignadas</div>
+    Tu usuario no tiene acceso a ninguna sección. Contacta con un administrador.
   </div>
 
   <!-- ════ DIRECCIÓN ════ -->
@@ -538,6 +598,15 @@
       </div>
       <div class="last-update" id="last-update">—</div>
     </section>
+    <section>
+      <div class="sec-title">Sesión</div>
+      <div class="tile st-none">
+        <div class="t-label">Conectado como</div>
+        <div class="t-value" id="session-user" style="font-size:16px">—</div>
+        <div class="t-status" id="session-role">—</div>
+      </div>
+      <button class="btn" style="margin-top:10px;border-color:var(--red);background:rgba(227,38,54,0.08);color:var(--red)" onclick="logout()">Cerrar sesión</button>
+    </section>
   </div>
 </main>
 
@@ -554,10 +623,11 @@
     <span class="nav-icon">⚙️</span> Ajustes
   </button>
 </nav>
+</div>
 
 <script>
 const REFRESH_MS = 30000;
-const DEFAULT_SERVER_URL = 'https://text-constantly-lap-sierra.trycloudflare.com';
+const DEFAULT_SERVER_URL = 'https://climb-comedy-perfect-charity.trycloudflare.com';
 const STATUS_LABEL = { ok: '✔ OK', warning: '⚠ Atención', critical: '⛔ Crítico', none: 'Sin datos' };
 const SEV_TEXT = { critical: '⛔ Crítico', warning: '⚠ Advertencia', info: 'ℹ Info' };
 
@@ -568,11 +638,19 @@ function cfg() {
   };
 }
 
+function authHeaders(extra) {
+  const s = getSession();
+  const headers = Object.assign({}, extra || {});
+  if (s && s.token) headers['Authorization'] = 'Bearer ' + s.token;
+  return headers;
+}
+
 function api(path, params) {
   const { url } = cfg();
   if (!url) return Promise.reject(new Error('Sin URL configurada'));
   const qs = params ? '?' + new URLSearchParams(params) : '';
-  return fetch(url + '/api/v1/alerts' + path + qs).then(r => {
+  return fetch(url + '/api/v1/alerts' + path + qs, { headers: authHeaders() }).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Sesión caducada'); }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   });
@@ -720,6 +798,76 @@ function showView(name) {
   }
 }
 
+// ── SESIÓN / ROLES ──
+const ROLE_VIEWS = {
+  SUPERADMIN: ['direccion', 'mantenimiento'],
+  ADMIN: ['direccion', 'mantenimiento'],
+  MANTENIMIENTO: ['mantenimiento'],
+  FABRICACION: ['direccion'],
+};
+
+function getSession() {
+  try { return JSON.parse(localStorage.getItem('ln_session') || 'null'); }
+  catch (e) { return null; }
+}
+
+function allowedViews(nivel) {
+  return ROLE_VIEWS[(nivel || '').trim().toUpperCase()] || [];
+}
+
+async function doLogin() {
+  const correo = document.getElementById('login-correo').value.trim();
+  const contrasena = document.getElementById('login-password').value;
+  const res = document.getElementById('login-result');
+  const { url } = cfg();
+  if (!url) {
+    res.textContent = '✖ Configura primero la URL del servidor en Ajustes';
+    res.className = 'test-result fail';
+    return;
+  }
+  if (!correo || !contrasena) return;
+  res.textContent = 'Comprobando…';
+  res.className = 'test-result';
+  try {
+    const r = await fetch(url + '/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ correo, contrasena }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || 'Credenciales incorrectas');
+    localStorage.setItem('ln_session', JSON.stringify(data));
+    res.textContent = '';
+    enterApp(data);
+  } catch (e) {
+    res.textContent = '✖ ' + e.message;
+    res.className = 'test-result fail';
+  }
+}
+
+function logout() {
+  localStorage.removeItem('ln_session');
+  location.reload();
+}
+
+function enterApp(user) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-shell').style.display = 'flex';
+  document.getElementById('session-user').textContent = user.apellidos || user.codigo || '—';
+  document.getElementById('session-role').textContent = user.nivel_usuario || '—';
+
+  const views = allowedViews(user.nivel_usuario);
+  document.getElementById('nav-direccion').style.display = views.includes('direccion') ? '' : 'none';
+  document.getElementById('nav-mantenimiento').style.display = views.includes('mantenimiento') ? '' : 'none';
+  document.getElementById('no-access').style.display = views.length ? 'none' : 'block';
+
+  showView(views.length ? views[0] : 'ajustes');
+
+  refreshAll();
+  setInterval(refreshAll, REFRESH_MS);
+  registerServiceWorker().then(() => updatePushStatusUI());
+}
+
 function bindFilter(rowId, apply) {
   document.getElementById(rowId).addEventListener('click', e => {
     const btn = e.target.closest('.fchip');
@@ -806,7 +954,7 @@ async function togglePush() {
     if (existing) {
       await fetch(url + '/api/v1/push/unsubscribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ endpoint: existing.endpoint }),
       }).catch(() => {});
       await existing.unsubscribe();
@@ -821,7 +969,7 @@ async function togglePush() {
       return;
     }
 
-    const keyResp = await fetch(url + '/api/v1/push/vapid-public-key');
+    const keyResp = await fetch(url + '/api/v1/push/vapid-public-key', { headers: authHeaders() });
     if (!keyResp.ok) throw new Error('HTTP ' + keyResp.status);
     const { public_key } = await keyResp.json();
     if (!public_key) throw new Error('El servidor no tiene notificaciones configuradas');
@@ -833,7 +981,7 @@ async function togglePush() {
 
     await fetch(url + '/api/v1/push/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(sub.toJSON()),
     });
 
@@ -856,10 +1004,11 @@ async function togglePush() {
   }
   document.getElementById('cfg-url').value = url;
   document.getElementById('cfg-machine').value = c.machine;
-  refreshAll();
-  setInterval(refreshAll, REFRESH_MS);
 
-  registerServiceWorker().then(() => updatePushStatusUI());
+  const existingSession = getSession();
+  if (existingSession) {
+    enterApp(existingSession);
+  }
 })();
 </script>
 </body>
