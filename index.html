@@ -81,6 +81,24 @@
     text-transform: uppercase;
   }
   .header-spacer { flex: 1; }
+  .user-chip {
+    display: none;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--label);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: var(--font);
+    cursor: pointer;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+  .user-chip.visible { display: inline-block; }
+  .user-chip:active { border-color: var(--cyan); color: var(--cyan); }
   .conn-dot {
     display: flex;
     align-items: center;
@@ -461,11 +479,9 @@
 <div id="app-shell">
 <header>
   <div class="logo-mark">L</div>
-  <div>
-    <div class="header-title brand">Logisnext</div>
-    <div class="header-sub">JAULA · Alertas y Mantenimiento</div>
-  </div>
+  <div class="header-title brand">Logisnext</div>
   <div class="header-spacer"></div>
+  <button class="user-chip" id="user-chip" onclick="confirmSwitchUser()" title="Cambiar de usuario">⇄ <span id="user-chip-name"></span></button>
   <div class="conn-dot" id="conn-dot">—</div>
 </header>
 
@@ -605,7 +621,7 @@
         <div class="t-value" id="session-user" style="font-size:16px">—</div>
         <div class="t-status" id="session-role">—</div>
       </div>
-      <button class="btn" style="margin-top:10px;border-color:var(--red);background:rgba(227,38,54,0.08);color:var(--red)" onclick="logout()">Cerrar sesión</button>
+      <button class="btn" style="margin-top:10px;border-color:var(--red);background:rgba(227,38,54,0.08);color:var(--red)" onclick="confirmSwitchUser()">Cambiar de usuario</button>
     </section>
   </div>
 </main>
@@ -850,11 +866,19 @@ function logout() {
   location.reload();
 }
 
+function confirmSwitchUser() {
+  if (confirm('¿Cambiar de usuario? Se cerrará la sesión actual.')) logout();
+}
+
 function enterApp(user) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
   document.getElementById('session-user').textContent = user.apellidos || user.codigo || '—';
   document.getElementById('session-role').textContent = user.nivel_usuario || '—';
+
+  const chip = document.getElementById('user-chip');
+  document.getElementById('user-chip-name').textContent = (user.apellidos || user.codigo || '').split(' ')[0];
+  chip.classList.add('visible');
 
   const views = allowedViews(user.nivel_usuario);
   document.getElementById('nav-direccion').style.display = views.includes('direccion') ? '' : 'none';
