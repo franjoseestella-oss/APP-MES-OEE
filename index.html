@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="mobile-web-app-capable" content="yes">
 <title>LOGISNEXT — Alertas</title>
+<link rel="manifest" href="manifest.json">
 <style>
   :root {
     --bg:      #000000;
@@ -521,6 +522,12 @@
       <div class="test-result" id="test-result"></div>
     </section>
     <section>
+      <div class="sec-title">Notificaciones</div>
+      <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
+      <div class="test-result" id="push-result"></div>
+      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, aunque tengas la app cerrada. La primera vez el navegador te pedirá permiso para notificaciones.</div>
+    </section>
+    <section>
       <div class="sec-title">Información</div>
       <div class="tile st-cyan">
         <div class="t-label">Logisnext — Centro de Alertas móvil</div>
@@ -550,6 +557,7 @@
 
 <script>
 const REFRESH_MS = 30000;
+const DEFAULT_SERVER_URL = 'https://text-constantly-lap-sierra.trycloudflare.com';
 const STATUS_LABEL = { ok: '✔ OK', warning: '⚠ Atención', critical: '⛔ Crítico', none: 'Sin datos' };
 const SEV_TEXT = { critical: '⛔ Crítico', warning: '⚠ Advertencia', info: 'ℹ Info' };
 
@@ -744,22 +752,114 @@ async function saveSettings() {
   }
 }
 
+// ── PUSH NOTIFICATIONS ──
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+async function registerServiceWorker() {
+  if (!pushSupported()) return null;
+  return navigator.serviceWorker.register('sw.js');
+}
+
+async function updatePushStatusUI() {
+  const btn = document.getElementById('btn-push');
+  const res = document.getElementById('push-result');
+  if (!pushSupported()) {
+    btn.disabled = true;
+    btn.textContent = 'Notificaciones no disponibles en este navegador';
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready.catch(() => null);
+  const sub = reg ? await reg.pushManager.getSubscription() : null;
+  if (sub) {
+    btn.textContent = 'Desactivar notificaciones push';
+    res.textContent = '✔ Notificaciones activadas en este dispositivo';
+    res.className = 'test-result ok';
+  } else {
+    btn.textContent = 'Activar notificaciones push';
+    res.textContent = '';
+    res.className = 'test-result';
+  }
+}
+
+async function togglePush() {
+  const res = document.getElementById('push-result');
+  if (!pushSupported()) return;
+  const { url } = cfg();
+  if (!url) {
+    res.textContent = '✖ Configura primero la URL del servidor arriba';
+    res.className = 'test-result fail';
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+
+    if (existing) {
+      await fetch(url + '/api/v1/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: existing.endpoint }),
+      }).catch(() => {});
+      await existing.unsubscribe();
+      await updatePushStatusUI();
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      res.textContent = '✖ Permiso de notificaciones denegado';
+      res.className = 'test-result fail';
+      return;
+    }
+
+    const keyResp = await fetch(url + '/api/v1/push/vapid-public-key');
+    if (!keyResp.ok) throw new Error('HTTP ' + keyResp.status);
+    const { public_key } = await keyResp.json();
+    if (!public_key) throw new Error('El servidor no tiene notificaciones configuradas');
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(public_key),
+    });
+
+    await fetch(url + '/api/v1/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sub.toJSON()),
+    });
+
+    await updatePushStatusUI();
+  } catch (e) {
+    res.textContent = '✖ No se pudo activar: ' + e.message;
+    res.className = 'test-result fail';
+  }
+}
+
 // Init
 (function () {
   const c = cfg();
-  document.getElementById('cfg-url').value = c.url;
-  document.getElementById('cfg-machine').value = c.machine;
-  if (!c.url) {
-    // Si se sirve desde el propio backend, usar el mismo origen por defecto
-    if (location.origin.startsWith('http')) {
-      localStorage.setItem('ln_url', location.origin);
-      document.getElementById('cfg-url').value = location.origin;
-    } else {
-      showView('ajustes');
-    }
+  // Corrige instalaciones antiguas que se autoconfiguraron con el propio
+  // origen de la app (Vercel), que nunca es el backend real.
+  let url = c.url;
+  if (!url || url === location.origin.replace(/\/+$/, '')) {
+    url = DEFAULT_SERVER_URL;
+    localStorage.setItem('ln_url', url);
   }
+  document.getElementById('cfg-url').value = url;
+  document.getElementById('cfg-machine').value = c.machine;
   refreshAll();
   setInterval(refreshAll, REFRESH_MS);
+
+  registerServiceWorker().then(() => updatePushStatusUI());
 })();
 </script>
 </body>
