@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="mobile-web-app-capable" content="yes">
+<title>LOGISNEXT — Alertas</title>
+<style>
+  :root {
+    --bg:      #000000;
+    --card:    #121212;
+    --border:  #1F1F1F;
+    --text:    #FFFFFF;
+    --label:   #8B92A0;
+    --green:   #2FD06A;
+    --red:     #E32636;
+    --amber:   #F4A623;
+    --cyan:    #25C9D6;
+    --magenta: #FF2E92;
+    --orange:  #FF6A00;
+    --radius:  10px;
+    --font: 'Segoe UI', 'Arial Narrow', Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    display: flex;
+    flex-direction: column;
+    overscroll-behavior-y: contain;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: rgba(0,0,0,0.97);
+    border-bottom: 2px solid var(--cyan);
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo-mark {
+    width: 30px; height: 30px;
+    border: 2px solid var(--cyan);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: var(--cyan);
+    flex-shrink: 0;
+  }
+  .header-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    line-height: 1.3;
+  }
+  .header-sub {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--label);
+    text-transform: uppercase;
+  }
+  .header-spacer { flex: 1; }
+  .conn-dot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--label);
+  }
+  .conn-dot::before {
+    content: '';
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--label);
+  }
+  .conn-dot.online { color: var(--green); }
+  .conn-dot.online::before { background: var(--green); }
+  .conn-dot.offline { color: var(--red); }
+  .conn-dot.offline::before { background: var(--red); }
+
+  /* ── MAIN ── */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 14px 90px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .view { display: none; }
+  .view.active { display: block; }
+  section { margin-bottom: 20px; }
+  .sec-title {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sec-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .error-banner {
+    display: none;
+    background: rgba(227,38,54,0.12);
+    border: 1px solid var(--red);
+    border-radius: var(--radius);
+    color: var(--red);
+    font-size: 11px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+  .error-banner.visible { display: block; }
+
+  /* ── TILES ── */
+  .tile {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .t-label {
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--label);
+    margin-bottom: 5px;
+  }
+  .t-value {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .t-status {
+    margin-top: 5px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .tile.hero { padding: 16px; }
+  .tile.hero .t-value { font-size: 44px; }
+  .tile.hero .t-status { font-size: 11px; margin-top: 8px; }
+
+  .tile.st-ok       { border-left-color: var(--green); }
+  .tile.st-warning  { border-left-color: var(--amber); }
+  .tile.st-critical { border-left-color: var(--red); }
+  .tile.st-none     { border-left-color: var(--border); }
+  .tile.st-cyan     { border-left-color: var(--cyan); }
+  .tile.st-ok .t-value,       .tile.st-ok .t-status       { color: var(--green); }
+  .tile.st-warning .t-value,  .tile.st-warning .t-status  { color: var(--amber); }
+  .tile.st-critical .t-value, .tile.st-critical .t-status { color: var(--red); }
+  .tile.st-none .t-value,     .tile.st-none .t-status     { color: var(--label); }
+  .tile.st-cyan .t-value { color: var(--cyan); }
+
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .grid-3 .t-value { font-size: 18px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+  /* Plan chips */
+  .plan-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .chip .c-num { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .chip .c-lbl { font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); margin-top: 3px; }
+  .chip.ok .c-num { color: var(--green); }
+  .chip.nok .c-num { color: var(--red); }
+  .chip.cyan .c-num { color: var(--cyan); }
+
+  /* ── ALERT CARDS ── */
+  .alert-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .alert-card.sev-critical { border-left-color: var(--red); }
+  .alert-card.sev-warning  { border-left-color: var(--amber); }
+  .alert-card.sev-info     { border-left-color: var(--cyan); }
+  .ac-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .sev-badge {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .sev-badge.sev-critical { border-color: var(--red);   color: var(--red);   background: rgba(227,38,54,0.1); }
+  .sev-badge.sev-warning  { border-color: var(--amber); color: var(--amber); background: rgba(244,166,35,0.1); }
+  .sev-badge.sev-info     { border-color: var(--cyan);  color: var(--cyan);  background: rgba(37,201,214,0.1); }
+  .ac-meta { font-size: 10px; color: var(--label); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ac-msg { font-size: 13px; line-height: 1.4; }
+
+  .empty-state {
+    text-align: center;
+    padding: 22px 10px;
+    color: var(--label);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .empty-state .big { font-size: 14px; color: var(--green); margin-bottom: 5px; letter-spacing: 0.1em; }
+
+  /* ── FILTER CHIPS ── */
+  .filter-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .fchip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--label);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: var(--font);
+    cursor: pointer;
+  }
+  .fchip.active { border-color: var(--cyan); color: var(--cyan); background: rgba(37,201,214,0.08); }
+
+  /* ── ALARM CARDS ── */
+  .alarm-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .alarm-card.tipo-alarma      { border-left-color: var(--red); }
+  .alarm-card.tipo-advertencia { border-left-color: var(--amber); }
+  .type-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .type-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .tipo-alarma .type-chip      { color: var(--red); }
+  .tipo-alarma .type-dot       { background: var(--red); }
+  .tipo-advertencia .type-chip { color: var(--amber); }
+  .tipo-advertencia .type-dot  { background: var(--amber); }
+  .dur-activa {
+    color: var(--red);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .dur-cerrada { color: var(--label); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+  /* ── AJUSTES ── */
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--label);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+  }
+  .form-group input:focus { border-color: var(--cyan); }
+  .form-hint { font-size: 10px; color: var(--label); margin-top: 5px; line-height: 1.4; }
+  .btn {
+    width: 100%;
+    border: 1px solid var(--cyan);
+    background: rgba(37,201,214,0.08);
+    color: var(--cyan);
+    border-radius: var(--radius);
+    padding: 13px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    font-family: var(--font);
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  .btn:active { background: rgba(37,201,214,0.2); }
+  .test-result { font-size: 12px; margin-top: 4px; text-align: center; min-height: 18px; }
+  .test-result.ok { color: var(--green); }
+  .test-result.fail { color: var(--red); }
+
+  .last-update {
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--label);
+    margin-top: 4px;
+  }
+
+  /* ── BOTTOM NAV ── */
+  nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,0.97);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 10;
+  }
+  .nav-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    border-top: 2px solid transparent;
+    color: var(--label);
+    font-family: var(--font);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 10px 4px 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+  }
+  .nav-btn .nav-icon { font-size: 18px; line-height: 1; }
+  .nav-btn.active { color: var(--cyan); border-top-color: var(--cyan); }
+  .nav-badge {
+    position: absolute;
+    top: 5px;
+    right: calc(50% - 24px);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: var(--red);
+    color: var(--bg);
+    font-size: 9px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav-badge.zero { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">LN</div>
+  <div>
+    <div class="header-title">Logisnext — Alertas</div>
+    <div class="header-sub">KPI · Mantenimiento</div>
+  </div>
+  <div class="header-spacer"></div>
+  <div class="conn-dot" id="conn-dot">—</div>
+</header>
+
+<main>
+  <div class="error-banner" id="error-banner">
+    ⚠ Sin conexión con el servidor. Revisa la URL en Ajustes y que el móvil esté en la misma red que el servidor MES.
+  </div>
+
+  <!-- ════ DIRECCIÓN ════ -->
+  <div class="view active" id="view-direccion">
+    <section>
+      <div class="sec-title" id="kpi-sec-title">KPI del turno actual</div>
+      <div class="tile hero st-none" id="tile-oee">
+        <div class="t-label">OEE</div>
+        <div class="t-value">—</div>
+        <div class="t-status">Sin datos</div>
+      </div>
+      <div class="grid-3">
+        <div class="tile st-none" id="tile-availability">
+          <div class="t-label">Disponib.</div>
+          <div class="t-value">—</div>
+          <div class="t-status">—</div>
+        </div>
+        <div class="tile st-none" id="tile-performance">
+          <div class="t-label">Rendim.</div>
+          <div class="t-value">—</div>
+          <div class="t-status">—</div>
+        </div>
+        <div class="tile st-none" id="tile-quality">
+          <div class="t-label">Calidad</div>
+          <div class="t-value">—</div>
+          <div class="t-status">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Plan de producción — hoy</div>
+      <div class="plan-row">
+        <div class="chip cyan"><div class="c-num" id="plan-planificadas">—</div><div class="c-lbl">Planif.</div></div>
+        <div class="chip cyan"><div class="c-num" id="plan-completadas">—</div><div class="c-lbl">Complet.</div></div>
+        <div class="chip ok"><div class="c-num" id="plan-ok">—</div><div class="c-lbl">OK</div></div>
+        <div class="chip nok"><div class="c-num" id="plan-nok">—</div><div class="c-lbl">NOK</div></div>
+      </div>
+      <div class="tile st-none" id="tile-desviacion">
+        <div class="t-label">Desviación del plan</div>
+        <div class="t-value">—</div>
+        <div class="t-status">Sin datos</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Alertas KPI activas</div>
+      <div id="kpi-alert-list">
+        <div class="empty-state">Cargando…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ════ MANTENIMIENTO ════ -->
+  <div class="view" id="view-mantenimiento">
+    <section>
+      <div class="sec-title">Estado de alarmas</div>
+      <div class="grid-2">
+        <div class="tile st-none" id="tile-alarmas-activas">
+          <div class="t-label">Alarmas activas</div>
+          <div class="t-value">—</div>
+          <div class="t-status">Sin datos</div>
+        </div>
+        <div class="tile st-none" id="tile-advertencias-activas">
+          <div class="t-label">Advert. activas</div>
+          <div class="t-value">—</div>
+          <div class="t-status">Sin datos</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Registro de alarmas</div>
+      <div class="filter-row" id="filter-estado">
+        <button class="fchip active" data-value="todas">Todas</button>
+        <button class="fchip" data-value="activas">Solo activas</button>
+      </div>
+      <div class="filter-row" id="filter-tipo">
+        <button class="fchip active" data-value="">Todos</button>
+        <button class="fchip" data-value="Alarma">Alarma</button>
+        <button class="fchip" data-value="Advertencia">Advertencia</button>
+      </div>
+      <div id="alarm-list">
+        <div class="empty-state">Cargando…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ════ AJUSTES ════ -->
+  <div class="view" id="view-ajustes">
+    <section>
+      <div class="sec-title">Conexión al servidor MES</div>
+      <div class="form-group">
+        <label for="cfg-url">URL del servidor</label>
+        <input type="url" id="cfg-url" placeholder="http://192.168.1.50:8000" inputmode="url" autocapitalize="off">
+        <div class="form-hint">Dirección del backend MES/OEE (puerto 8000). El móvil debe estar en la misma red que el servidor.</div>
+      </div>
+      <div class="form-group">
+        <label for="cfg-machine">ID de máquina</label>
+        <input type="text" id="cfg-machine" placeholder="JAULA-01" autocapitalize="characters">
+      </div>
+      <button class="btn" onclick="saveSettings()">Guardar y probar conexión</button>
+      <div class="test-result" id="test-result"></div>
+    </section>
+    <section>
+      <div class="sec-title">Información</div>
+      <div class="tile st-cyan">
+        <div class="t-label">Logisnext — Centro de Alertas móvil</div>
+        <div style="font-size:12px;color:var(--label);line-height:1.6;margin-top:6px">
+          Los datos se actualizan automáticamente cada 30 segundos.<br>
+          Para instalar: menú del navegador → «Añadir a pantalla de inicio».
+        </div>
+      </div>
+      <div class="last-update" id="last-update">—</div>
+    </section>
+  </div>
+</main>
+
+<nav>
+  <button class="nav-btn active" id="nav-direccion" onclick="showView('direccion')">
+    <span class="nav-icon">📊</span> Dirección
+    <span class="nav-badge zero" id="badge-kpi"></span>
+  </button>
+  <button class="nav-btn" id="nav-mantenimiento" onclick="showView('mantenimiento')">
+    <span class="nav-icon">🔧</span> Mantenim.
+    <span class="nav-badge zero" id="badge-mant"></span>
+  </button>
+  <button class="nav-btn" id="nav-ajustes" onclick="showView('ajustes')">
+    <span class="nav-icon">⚙️</span> Ajustes
+  </button>
+</nav>
+
+<script>
+const REFRESH_MS = 30000;
+const STATUS_LABEL = { ok: '✔ OK', warning: '⚠ Atención', critical: '⛔ Crítico', none: 'Sin datos' };
+const SEV_TEXT = { critical: '⛔ Crítico', warning: '⚠ Advertencia', info: 'ℹ Info' };
+
+function cfg() {
+  return {
+    url: (localStorage.getItem('ln_url') || '').replace(/\/+$/, ''),
+    machine: localStorage.getItem('ln_machine') || 'JAULA-01',
+  };
+}
+
+function api(path, params) {
+  const { url } = cfg();
+  if (!url) return Promise.reject(new Error('Sin URL configurada'));
+  const qs = params ? '?' + new URLSearchParams(params) : '';
+  return fetch(url + '/api/v1/alerts' + path + qs).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+
+function setTile(id, value, status) {
+  const tile = document.getElementById(id);
+  const isHero = tile.classList.contains('hero');
+  tile.className = 'tile ' + (isHero ? 'hero ' : '') + 'st-' + status;
+  tile.querySelector('.t-value').textContent = value;
+  tile.querySelector('.t-status').textContent = STATUS_LABEL[status] || status;
+}
+
+function statusFromAlerts(alerts, types) {
+  const rel = alerts.filter(a => types.includes(a.type));
+  if (rel.some(a => a.severity === 'critical')) return 'critical';
+  if (rel.some(a => a.severity === 'warning')) return 'warning';
+  return 'ok';
+}
+
+function fmtPct(v) { return v === null || v === undefined ? '—' : v.toFixed(1) + ' %'; }
+
+function fmtTs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderKpi(kpi) {
+  document.getElementById('kpi-sec-title').textContent =
+    'KPI del turno' + (kpi.shift_label ? ' ' + kpi.shift_label : '') + ' · ' + kpi.machine_id;
+
+  const mk = (id, value, types) => setTile(
+    id, fmtPct(value),
+    value === null || value === undefined ? 'none' : statusFromAlerts(kpi.alerts, types));
+  mk('tile-oee', kpi.oee, ['oee_below_target']);
+  mk('tile-availability', kpi.availability, ['low_availability']);
+  mk('tile-performance', kpi.performance, ['low_performance']);
+  mk('tile-quality', kpi.quality, ['low_quality']);
+
+  document.getElementById('plan-planificadas').textContent = kpi.plan.planificadas;
+  document.getElementById('plan-completadas').textContent = kpi.plan.completadas;
+  document.getElementById('plan-ok').textContent = kpi.plan.ok;
+  document.getElementById('plan-nok').textContent = kpi.plan.nok;
+  setTile('tile-desviacion',
+    (kpi.plan.desviacion_pct > 0 ? '+' : '') + kpi.plan.desviacion_pct.toFixed(1) + ' %',
+    kpi.plan.planificadas > 0
+      ? statusFromAlerts(kpi.alerts, ['deviation_plan', 'high_reject_rate']) : 'none');
+
+  const list = document.getElementById('kpi-alert-list');
+  if (!kpi.alerts.length) {
+    list.innerHTML = '<div class="empty-state"><div class="big">✔ Sin alertas activas</div>' +
+      'Todos los KPI dentro de los umbrales.</div>';
+  } else {
+    const order = { critical: 0, warning: 1, info: 2 };
+    list.innerHTML = kpi.alerts
+      .slice().sort((a, b) => order[a.severity] - order[b.severity])
+      .map(a => `
+        <div class="alert-card sev-${a.severity}">
+          <div class="ac-head">
+            <span class="sev-badge sev-${a.severity}">${SEV_TEXT[a.severity] || a.severity}</span>
+            <span class="ac-meta">valor ${a.value} · umbral ${a.threshold}</span>
+          </div>
+          <div class="ac-msg">${a.message}</div>
+        </div>`).join('');
+  }
+
+  const badge = document.getElementById('badge-kpi');
+  const n = kpi.critical + kpi.warning;
+  badge.textContent = n || '';
+  badge.classList.toggle('zero', n === 0);
+}
+
+function renderMaintenanceCounts(m) {
+  setTile('tile-alarmas-activas', m.alarmas_activas, m.alarmas_activas > 0 ? 'critical' : 'ok');
+  setTile('tile-advertencias-activas', m.advertencias_activas, m.advertencias_activas > 0 ? 'warning' : 'ok');
+  const badge = document.getElementById('badge-mant');
+  badge.textContent = m.total_activas || '';
+  badge.classList.toggle('zero', m.total_activas === 0);
+}
+
+function renderAlarms(alarmas) {
+  const list = document.getElementById('alarm-list');
+  if (!alarmas.length) {
+    list.innerHTML = '<div class="empty-state">Sin registros para el filtro seleccionado.</div>';
+    return;
+  }
+  list.innerHTML = alarmas.map(a => {
+    const cls = a.tipo === 'Alarma' ? 'tipo-alarma' : a.tipo === 'Advertencia' ? 'tipo-advertencia' : '';
+    const dur = a.activa
+      ? '<span class="dur-activa">● Activa</span>'
+      : `<span class="dur-cerrada">${a.duracion ?? '—'}</span>`;
+    return `
+      <div class="alarm-card ${cls}">
+        <div class="ac-head">
+          <span class="type-chip"><span class="type-dot"></span>${a.tipo ?? '—'} · Nº ${a.id ?? '—'}</span>
+          ${dur}
+        </div>
+        <div class="ac-msg">${a.descripcion ?? '—'}</div>
+        <div class="ac-meta" style="margin-top:4px">${fmtTs(a.fecha_y_hora)}</div>
+      </div>`;
+  }).join('');
+}
+
+function setConnection(ok) {
+  const dot = document.getElementById('conn-dot');
+  dot.textContent = ok ? 'En línea' : 'Sin conexión';
+  dot.className = 'conn-dot ' + (ok ? 'online' : 'offline');
+  document.getElementById('error-banner').classList.toggle('visible', !ok);
+  if (ok) {
+    document.getElementById('last-update').textContent =
+      'Actualizado ' + new Date().toLocaleTimeString('es-ES');
+  }
+}
+
+let filterEstado = 'todas';
+let filterTipo = '';
+
+async function refreshAll() {
+  const { machine } = cfg();
+  try {
+    const [summary, maint] = await Promise.all([
+      api('/summary', { machine_id: machine }),
+      api('/maintenance', {
+        activas: String(filterEstado === 'activas'),
+        limit: '100',
+        ...(filterTipo ? { tipo: filterTipo } : {}),
+      }),
+    ]);
+    renderKpi(summary.kpi);
+    renderMaintenanceCounts(maint);
+    renderAlarms(maint.alarmas);
+    setConnection(true);
+  } catch (e) {
+    console.error('Error actualizando:', e);
+    setConnection(false);
+  }
+}
+
+function showView(name) {
+  for (const v of ['direccion', 'mantenimiento', 'ajustes']) {
+    document.getElementById('view-' + v).classList.toggle('active', v === name);
+    document.getElementById('nav-' + v).classList.toggle('active', v === name);
+  }
+}
+
+function bindFilter(rowId, apply) {
+  document.getElementById(rowId).addEventListener('click', e => {
+    const btn = e.target.closest('.fchip');
+    if (!btn) return;
+    for (const c of e.currentTarget.querySelectorAll('.fchip')) c.classList.remove('active');
+    btn.classList.add('active');
+    apply(btn.dataset.value);
+    refreshAll();
+  });
+}
+bindFilter('filter-estado', v => { filterEstado = v; });
+bindFilter('filter-tipo', v => { filterTipo = v; });
+
+async function saveSettings() {
+  const url = document.getElementById('cfg-url').value.trim().replace(/\/+$/, '');
+  const machine = document.getElementById('cfg-machine').value.trim() || 'JAULA-01';
+  localStorage.setItem('ln_url', url);
+  localStorage.setItem('ln_machine', machine);
+  const res = document.getElementById('test-result');
+  res.textContent = 'Probando conexión…';
+  res.className = 'test-result';
+  try {
+    await api('/summary', { machine_id: machine });
+    res.textContent = '✔ Conexión correcta';
+    res.className = 'test-result ok';
+    refreshAll();
+  } catch (e) {
+    res.textContent = '✖ No se pudo conectar: ' + e.message;
+    res.className = 'test-result fail';
+  }
+}
+
+// Init
+(function () {
+  const c = cfg();
+  document.getElementById('cfg-url').value = c.url;
+  document.getElementById('cfg-machine').value = c.machine;
+  if (!c.url) {
+    // Si se sirve desde el propio backend, usar el mismo origen por defecto
+    if (location.origin.startsWith('http')) {
+      localStorage.setItem('ln_url', location.origin);
+      document.getElementById('cfg-url').value = location.origin;
+    } else {
+      showView('ajustes');
+    }
+  }
+  refreshAll();
+  setInterval(refreshAll, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
