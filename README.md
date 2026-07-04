@@ -12,12 +12,14 @@ ni compilación, con el código de colores Logisnext HMI.
 
 ## Qué muestra
 
-- **Dirección** 📊 — OEE del turno actual en un indicador circular animado con
+- **Producción** 📊 — OEE del turno actual en un indicador circular animado con
   estado (✔ OK / ⚠ Atención / ⛔ Crítico) y sparkline de evolución, Disponibilidad,
   Rendimiento y Calidad con barras de progreso, plan de producción del día con
-  barra de avance, desviación e indicador de secuencia actual (si el backend
-  envía `secuencia_actual` en el resumen), y lista de alertas KPI activas ordenadas por
-  severidad.
+  barra de avance, desviación, indicador de secuencia actual y listado de
+  secuencias del día con su estado (completada / con NOK / en curso /
+  pendiente, horas y unidades OK-NOK) — si el backend envía `secuencia_actual`
+  y `secuencias` en el resumen —, y lista de alertas KPI activas ordenadas
+  por severidad.
 - **Mis alertas** 🎚 — cada usuario puede activar sus propios umbrales (OEE,
   Disponibilidad, Rendimiento, Calidad y desviación del plan). Un KPI
   personalizado se evalúa con el límite del usuario en lugar del que marca el
