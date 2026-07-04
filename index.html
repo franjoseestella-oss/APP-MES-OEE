@@ -584,6 +584,24 @@
     color: var(--label);
     margin-bottom: 26px;
   }
+  .login-cfg-toggle {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--label);
+    font-family: var(--font);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 8px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .login-cfg-toggle:active { color: var(--cyan); }
+  #login-cfg { display: none; margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
+  #login-cfg.visible { display: block; animation: fadeUp 0.25s ease both; }
 
   /* ── BOTTOM NAV ── */
   nav {
@@ -661,6 +679,15 @@
     </div>
     <button class="btn" type="submit" id="login-btn">Entrar</button>
     <div class="test-result" id="login-result" role="status"></div>
+    <button type="button" class="login-cfg-toggle" onclick="toggleLoginCfg()">⚙ Configurar servidor</button>
+    <div id="login-cfg">
+      <div class="form-group">
+        <label for="login-url">URL del servidor MES</label>
+        <input type="url" id="login-url" placeholder="https://xxxx.trycloudflare.com" inputmode="url" autocapitalize="off">
+        <div class="form-hint">Si el túnel de Cloudflare se ha reiniciado, la URL cambia. Cópiala de los logs del servidor (<code>docker logs mes_tunnel</code>) y pégala aquí.</div>
+      </div>
+      <button type="button" class="btn" onclick="saveLoginUrl()">Guardar URL y probar</button>
+    </div>
   </form>
 </div>
 
@@ -1110,6 +1137,42 @@ function allowedViews(nivel) {
   return ROLE_VIEWS[(nivel || '').trim().toUpperCase()] || [];
 }
 
+function toggleLoginCfg() {
+  const panel = document.getElementById('login-cfg');
+  panel.classList.toggle('visible');
+  if (panel.classList.contains('visible')) {
+    document.getElementById('login-url').value = cfg().url;
+  }
+}
+
+async function saveLoginUrl() {
+  const url = document.getElementById('login-url').value.trim().replace(/\/+$/, '');
+  const res = document.getElementById('login-result');
+  if (!url) {
+    res.textContent = '✖ Escribe la URL del servidor';
+    res.className = 'test-result fail';
+    return;
+  }
+  localStorage.setItem('ln_url', url);
+  document.getElementById('cfg-url').value = url;
+  res.textContent = 'Probando conexión…';
+  res.className = 'test-result';
+  try {
+    // Cualquier respuesta HTTP (aunque sea 401) demuestra que el servidor
+    // es alcanzable; solo falla si no hay conexión con esa URL.
+    await fetch(url + '/api/v1/alerts/maintenance?limit=1', { headers: authHeaders() });
+    res.textContent = '✔ Servidor accesible. Ya puedes iniciar sesión.';
+    res.className = 'test-result ok';
+  } catch (e) {
+    res.textContent = '✖ No se llega al servidor con esa URL. ¿Ha cambiado el túnel?';
+    res.className = 'test-result fail';
+  }
+}
+
+function isNetworkError(e) {
+  return e instanceof TypeError || /fetch|network|load/i.test(e.message || '');
+}
+
 async function doLogin(event) {
   if (event) event.preventDefault();
   const correo = document.getElementById('login-correo').value.trim();
@@ -1118,7 +1181,7 @@ async function doLogin(event) {
   const btn = document.getElementById('login-btn');
   const { url } = cfg();
   if (!url) {
-    res.textContent = '✖ Configura primero la URL del servidor en Ajustes';
+    res.textContent = '✖ Configura primero la URL del servidor (⚙ abajo)';
     res.className = 'test-result fail';
     return;
   }
@@ -1138,7 +1201,9 @@ async function doLogin(event) {
     localStorage.setItem('ln_session', JSON.stringify(data));
     enterApp(data);
   } catch (e) {
-    res.textContent = '✖ ' + e.message;
+    res.textContent = isNetworkError(e)
+      ? '✖ No hay conexión con el servidor. Pulsa «⚙ Configurar servidor» y comprueba la URL.'
+      : '✖ ' + e.message;
     res.className = 'test-result fail';
   } finally {
     btn.disabled = false;
