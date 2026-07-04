@@ -504,6 +504,76 @@
   .sq-curso .sq-state { color: var(--cyan); animation: blink 1.6s ease infinite; }
   .sq-pend .sq-state  { color: var(--label); }
 
+  .seq-card { cursor: pointer; transition: transform 0.1s ease; }
+  .seq-card:active { transform: scale(0.985); border-color: var(--border-2); }
+  .chip-btn { cursor: pointer; font-family: var(--font); color: var(--text); width: 100%; }
+  .chip-btn:active { border-color: var(--cyan); }
+
+  /* ── HOJA DE DETALLE (bottom sheet) ── */
+  .sheet-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .sheet-overlay.open { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 31;
+    background: linear-gradient(170deg, #131B2A, var(--card));
+    border-top: 1px solid var(--border-2);
+    border-radius: 20px 20px 0 0;
+    padding: 10px 18px calc(env(safe-area-inset-bottom, 0px) + 20px);
+    max-height: 82%;
+    overflow-y: auto;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 -12px 40px rgba(0,0,0,0.6);
+  }
+  .sheet.open { transform: none; }
+  .sheet-handle {
+    width: 40px; height: 4px;
+    border-radius: 2px;
+    background: var(--border-2);
+    margin: 0 auto 14px;
+  }
+  .sh-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .sh-title { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sh-desc { font-size: 13px; color: var(--label); line-height: 1.5; margin-bottom: 4px; }
+  .sh-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .qbar {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    margin: 12px 0 4px;
+  }
+  .qbar .qb-ok  { background: linear-gradient(90deg, #1F8A4C, var(--green)); }
+  .qbar .qb-nok { background: var(--red); }
+  .sh-rows { margin-top: 10px; }
+  .sh-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .sh-row .r-lbl { color: var(--label); }
+  .sh-row .r-val { font-variant-numeric: tabular-nums; text-align: right; }
+  .motivo-nok .r-val { color: var(--red); font-weight: 700; }
+
   /* ── MIS ALERTAS (umbrales personales) ── */
   .thr-card {
     background: linear-gradient(160deg, var(--card-2), var(--card));
@@ -807,27 +877,29 @@
 
   const t0 = Date.now();
   const wave = (base, amp, period) => base + amp * Math.sin((Date.now() - t0) / period + 1);
+  const MOTIVOS = [[], [{ motivo: 'Rechazo visual en soldadura', cantidad: 1 }],
+    [{ motivo: 'Soldadura porosa', cantidad: 1 }, { motivo: 'Dimensional fuera de tolerancia', cantidad: 1 }]];
 
   function secuencias() {
-    // avanza una secuencia cada 90 s para que se vea vivo
     const paso = Math.floor((Date.now() - t0) / 90000);
     const defs = [
-      ['SEQ-115', 'Chasis FB25 — lote 39', 30, 0],
-      ['SEQ-116', 'Chasis FB25 — lote 40', 30, 2],
-      ['SEQ-117', 'Traviesa FB30 — lote 41', 25, 0],
-      ['SEQ-118', 'Chasis FB25 — lote 42', 30, 1],
-      ['SEQ-119', 'Chasis FB30 — lote 43', 30, 0],
-      ['SEQ-120', 'Traviesa FB25 — lote 44', 20, 0],
+      ['SEQ-115', 'Chasis FB25 — lote 39', 30, 0, 'M. Ruiz'],
+      ['SEQ-116', 'Chasis FB25 — lote 40', 30, 2, 'M. Ruiz'],
+      ['SEQ-117', 'Traviesa FB30 — lote 41', 25, 0, 'A. García'],
+      ['SEQ-118', 'Chasis FB25 — lote 42', 30, 1, 'A. García'],
+      ['SEQ-119', 'Chasis FB30 — lote 43', 30, 0, 'J. Pérez'],
+      ['SEQ-120', 'Traviesa FB25 — lote 44', 20, 0, 'J. Pérez'],
     ];
     const enCurso = Math.min(3 + paso, defs.length - 1);
     const horas = ['06:05', '07:25', '08:45', '10:10', '11:30', '12:50'];
     return defs.map((d, i) => {
-      const [codigo, descripcion, cantidad, nok] = d;
-      if (i < enCurso) return { codigo, descripcion, cantidad, ok: cantidad - nok, nok,
-        estado: 'completada', hora_inicio: horas[i], hora_fin: horas[i + 1] };
-      if (i === enCurso) return { codigo, descripcion, cantidad, ok: Math.floor(cantidad / 2), nok,
-        estado: 'en curso', hora_inicio: horas[i] };
-      return { codigo, descripcion, cantidad, estado: 'pendiente' };
+      const [codigo, descripcion, cantidad, nok, operario] = d;
+      const motivos = MOTIVOS[Math.min(nok, 2)];
+      if (i < enCurso) return { codigo, descripcion, cantidad, ok: cantidad - nok, nok, operario,
+        estado: 'completada', hora_inicio: horas[i], hora_fin: horas[i + 1], motivos_nok: motivos };
+      if (i === enCurso) return { codigo, descripcion, cantidad, ok: Math.floor(cantidad / 2), nok, operario,
+        estado: 'en curso', hora_inicio: horas[i], motivos_nok: motivos };
+      return { codigo, descripcion, cantidad, operario, estado: 'pendiente' };
     });
   }
 
@@ -1011,7 +1083,7 @@
         <div class="chip cyan"><div class="c-num" id="plan-planificadas">—</div><div class="c-lbl">Planif.</div></div>
         <div class="chip cyan"><div class="c-num" id="plan-completadas">—</div><div class="c-lbl">Complet.</div></div>
         <div class="chip ok"><div class="c-num" id="plan-ok">—</div><div class="c-lbl">OK</div></div>
-        <div class="chip nok"><div class="c-num" id="plan-nok">—</div><div class="c-lbl">NOK</div></div>
+        <button class="chip nok chip-btn" onclick="showNokSheet()" title="¿De dónde salen los NOK?"><div class="c-num" id="plan-nok">—</div><div class="c-lbl">NOK ⓘ</div></button>
       </div>
       <div class="plan-progress"><div class="pp-fill" id="plan-progress-fill"></div></div>
       <div class="pp-meta"><span>Avance del plan</span><span id="plan-progress-label">—</span></div>
@@ -1160,6 +1232,12 @@
     </section>
   </div>
 </main>
+
+<div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="sheet-handle"></div>
+  <div id="sheet-content"></div>
+</div>
 
 <nav>
   <button class="nav-btn active" id="nav-direccion" onclick="showView('direccion')">
@@ -1394,6 +1472,7 @@ function renderSeqList(kpi, plan) {
   const cont = document.getElementById('seq-list');
   const title = document.getElementById('seq-sec-title');
   const seqs = kpi.secuencias ?? plan.secuencias ?? null;
+  lastSeqs = Array.isArray(seqs) ? seqs : null;
   if (!Array.isArray(seqs)) {
     title.textContent = 'Secuencias de hoy';
     cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
@@ -1405,7 +1484,7 @@ function renderSeqList(kpi, plan) {
     cont.innerHTML = '<div class="empty-state">Sin secuencias planificadas para hoy.</div>';
     return;
   }
-  cont.innerHTML = seqs.map(s => {
+  cont.innerHTML = seqs.map((s, i) => {
     const st = seqEstado(s);
     const ini = fmtHora(s.hora_inicio ?? s.inicio);
     const fin = fmtHora(s.hora_fin ?? s.fin);
@@ -1415,16 +1494,140 @@ function renderSeqList(kpi, plan) {
     if (s.ok !== undefined && s.ok !== null) meta.push(esc(s.ok) + ' OK');
     if (s.nok) meta.push('<span style="color:var(--red)">' + esc(s.nok) + ' NOK</span>');
     return `
-      <div class="seq-card sq-${st}">
+      <div class="seq-card sq-${st}" data-i="${i}">
         <div class="ac-head">
           <span class="sq-code">${esc(s.codigo ?? s.numero ?? s.id)}</span>
-          <span class="sq-state">${SEQ_STATE_LABEL[st]}</span>
+          <span class="sq-state">${SEQ_STATE_LABEL[st]} ›</span>
         </div>
         ${s.descripcion || s.articulo ? '<div class="ac-msg">' + esc(s.descripcion ?? s.articulo) + '</div>' : ''}
         ${meta.length ? '<div class="ac-meta" style="margin-top:4px">' + meta.join(' · ') + '</div>' : ''}
       </div>`;
   }).join('');
 }
+
+// ── BOTTOM SHEET ──
+function openSheet(html) {
+  document.getElementById('sheet-content').innerHTML = html;
+  document.getElementById('sheet-overlay').classList.add('open');
+  document.getElementById('sheet').classList.add('open');
+}
+
+function closeSheet() {
+  document.getElementById('sheet-overlay').classList.remove('open');
+  document.getElementById('sheet').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+function minsBetween(ini, fin) {
+  const p = v => {
+    if (!v) return null;
+    const d = new Date(v);
+    if (!isNaN(d)) return d.getHours() * 60 + d.getMinutes();
+    const m = String(v).match(/^(\d{1,2}):(\d{2})/);
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  };
+  const a = p(ini), b = p(fin);
+  if (a === null || b === null) return null;
+  let d = b - a;
+  if (d < 0) d += 24 * 60;
+  return d;
+}
+
+function fmtDur(mins) {
+  if (mins === null) return null;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return (h ? h + ' h ' : '') + m + ' min';
+}
+
+function motivosRows(motivos) {
+  if (!Array.isArray(motivos) || !motivos.length) return '';
+  return '<div class="sec-title" style="margin-top:16px">Motivos NOK</div>' +
+    motivos.map(m => `
+      <div class="sh-row motivo-nok">
+        <span class="r-lbl">${esc(m.motivo ?? m.descripcion ?? m)}</span>
+        <span class="r-val">${m.cantidad !== undefined ? esc(m.cantidad) : ''}</span>
+      </div>`).join('');
+}
+
+function openSeqSheet(s) {
+  const st = seqEstado(s);
+  const ini = fmtHora(s.hora_inicio ?? s.inicio);
+  const fin = fmtHora(s.hora_fin ?? s.fin);
+  const ok = s.ok ?? null, nok = s.nok ?? 0, cant = s.cantidad ?? null;
+  const hechas = ok !== null ? ok + nok : null;
+  const calidad = hechas ? (ok / hechas) * 100 : null;
+  const dur = fmtDur(minsBetween(s.hora_inicio ?? s.inicio, s.hora_fin ?? s.fin));
+
+  const rows = [];
+  if (ini) rows.push(['Inicio', ini]);
+  if (fin) rows.push(['Fin', fin]);
+  if (dur && st !== 'curso') rows.push(['Duración', dur]);
+  if (cant !== null && hechas !== null) rows.push(['Progreso', hechas + ' / ' + cant + ' uds']);
+  if (s.operario) rows.push(['Operario', s.operario]);
+  if (s.maquina) rows.push(['Máquina', s.maquina]);
+
+  openSheet(`
+    <div class="sq-${st}">
+      <div class="sh-head">
+        <span class="sh-title">${esc(s.codigo ?? s.numero ?? s.id)}</span>
+        <span class="sq-state">${SEQ_STATE_LABEL[st]}</span>
+      </div>
+      ${s.descripcion || s.articulo ? '<div class="sh-desc">' + esc(s.descripcion ?? s.articulo) + '</div>' : ''}
+      <div class="sh-grid">
+        <div class="chip cyan"><div class="c-num">${cant ?? '—'}</div><div class="c-lbl">Cantidad</div></div>
+        <div class="chip ok"><div class="c-num">${ok ?? '—'}</div><div class="c-lbl">OK</div></div>
+        <div class="chip nok"><div class="c-num">${nok}</div><div class="c-lbl">NOK</div></div>
+        <div class="chip"><div class="c-num">${calidad === null ? '—' : calidad.toFixed(1) + ' %'}</div><div class="c-lbl">Calidad</div></div>
+      </div>
+      ${hechas ? `<div class="qbar">
+        <div class="qb-ok" style="width:${((ok / hechas) * 100).toFixed(1)}%"></div>
+        ${nok ? `<div class="qb-nok" style="width:${((nok / hechas) * 100).toFixed(1)}%"></div>` : ''}
+      </div>` : ''}
+      <div class="sh-rows">
+        ${rows.map(r => `<div class="sh-row"><span class="r-lbl">${esc(r[0])}</span><span class="r-val">${esc(r[1])}</span></div>`).join('')}
+      </div>
+      ${motivosRows(s.motivos_nok)}
+    </div>`);
+}
+
+function showNokSheet() {
+  const kpi = lastKpi || {};
+  const plan = kpi.plan || {};
+  const seqs = Array.isArray(kpi.secuencias ?? plan.secuencias) ? (kpi.secuencias ?? plan.secuencias) : [];
+  const conNok = seqs.filter(s => s.nok > 0);
+  const motivos = [].concat(plan.motivos_nok || [], ...seqs.map(s => s.motivos_nok || []));
+
+  openSheet(`
+    <div class="sh-head">
+      <span class="sh-title" style="color:var(--red)">${plan.nok ?? '—'} piezas NOK</span>
+      <span class="ac-meta">hoy</span>
+    </div>
+    <div class="sh-desc">
+      NOK son las piezas <b>rechazadas por el control de calidad</b> del MES hoy
+      (no OK). Restan a la Calidad y al OEE del turno.
+    </div>
+    ${conNok.length ? '<div class="sec-title" style="margin-top:14px">Por secuencia</div>' +
+      conNok.map(s => `
+        <div class="sh-row motivo-nok">
+          <span class="r-lbl">${esc(s.codigo ?? s.numero ?? s.id)}${s.descripcion ? ' · ' + esc(s.descripcion) : ''}</span>
+          <span class="r-val">${esc(s.nok)} NOK</span>
+        </div>`).join('')
+      : ''}
+    ${motivosRows(motivos)}
+    ${!conNok.length && !motivos.length
+      ? '<div class="form-hint" style="margin-top:12px">El servidor aún no envía el desglose por secuencia ni los motivos de rechazo.</div>'
+      : ''}`);
+}
+
+let lastSeqs = null;
+
+document.getElementById('seq-list').addEventListener('click', e => {
+  const card = e.target.closest('.seq-card');
+  if (!card || !lastSeqs) return;
+  const s = lastSeqs[+card.dataset.i];
+  if (s) openSeqSheet(s);
+});
 
 let lastKpi = null;
 
