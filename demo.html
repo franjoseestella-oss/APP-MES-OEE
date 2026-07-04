@@ -471,6 +471,39 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ── SECUENCIAS DEL DÍA ── */
+  .seq-card {
+    background: linear-gradient(160deg, var(--card-2), var(--card));
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: fadeUp 0.3s ease both;
+  }
+  .seq-card.sq-done  { border-left-color: var(--green); }
+  .seq-card.sq-nok   { border-left-color: var(--red); }
+  .seq-card.sq-curso { border-left-color: var(--cyan); background: linear-gradient(160deg, rgba(43,217,229,0.07), var(--card)); }
+  .seq-card.sq-pend  { border-left-color: var(--border-2); opacity: 0.8; }
+  .sq-code {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .sq-state {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .sq-done .sq-state  { color: var(--green); }
+  .sq-nok .sq-state   { color: var(--red); }
+  .sq-curso .sq-state { color: var(--cyan); animation: blink 1.6s ease infinite; }
+  .sq-pend .sq-state  { color: var(--label); }
+
   /* ── MIS ALERTAS (umbrales personales) ── */
   .thr-card {
     background: linear-gradient(160deg, var(--card-2), var(--card));
@@ -774,7 +807,29 @@
 
   const t0 = Date.now();
   const wave = (base, amp, period) => base + amp * Math.sin((Date.now() - t0) / period + 1);
-  const SECUENCIAS = ['SEQ-118 · Chasis FB25 — lote 42', 'SEQ-119 · Chasis FB30 — lote 43', 'SEQ-120 · Traviesa FB25 — lote 44'];
+
+  function secuencias() {
+    // avanza una secuencia cada 90 s para que se vea vivo
+    const paso = Math.floor((Date.now() - t0) / 90000);
+    const defs = [
+      ['SEQ-115', 'Chasis FB25 — lote 39', 30, 0],
+      ['SEQ-116', 'Chasis FB25 — lote 40', 30, 2],
+      ['SEQ-117', 'Traviesa FB30 — lote 41', 25, 0],
+      ['SEQ-118', 'Chasis FB25 — lote 42', 30, 1],
+      ['SEQ-119', 'Chasis FB30 — lote 43', 30, 0],
+      ['SEQ-120', 'Traviesa FB25 — lote 44', 20, 0],
+    ];
+    const enCurso = Math.min(3 + paso, defs.length - 1);
+    const horas = ['06:05', '07:25', '08:45', '10:10', '11:30', '12:50'];
+    return defs.map((d, i) => {
+      const [codigo, descripcion, cantidad, nok] = d;
+      if (i < enCurso) return { codigo, descripcion, cantidad, ok: cantidad - nok, nok,
+        estado: 'completada', hora_inicio: horas[i], hora_fin: horas[i + 1] };
+      if (i === enCurso) return { codigo, descripcion, cantidad, ok: Math.floor(cantidad / 2), nok,
+        estado: 'en curso', hora_inicio: horas[i] };
+      return { codigo, descripcion, cantidad, estado: 'pendiente' };
+    });
+  }
 
   function summary() {
     const oee = wave(72, 6, 40000);
@@ -790,15 +845,16 @@
       value: av.toFixed(1) + ' %', threshold: '84 %', message: 'Disponibilidad baja: paradas no planificadas acumuladas en el turno' });
     alerts.push({ type: 'deviation_plan', severity: 'warning', value: '-8.3 %', threshold: '±5 %',
       message: 'Desviación del plan de producción superior al umbral' });
-    const si = Math.floor((Date.now() - t0) / 90000) % SECUENCIAS.length;
-    const [cod, desc] = SECUENCIAS[si].split(' · ');
+    const seqs = secuencias();
+    const actual = seqs.find(s => s.estado === 'en curso') || seqs[seqs.length - 1];
     return { kpi: {
       machine_id: 'JAULA-01', shift_label: 'Mañana',
       oee: +oee.toFixed(1), availability: +av.toFixed(1), performance: +pf.toFixed(1), quality: +q.toFixed(1),
       critical: alerts.filter(a => a.severity === 'critical').length,
       warning: alerts.filter(a => a.severity === 'warning').length,
       plan: { planificadas: 120, completadas, ok: completadas - nok, nok, desviacion_pct: -8.3 },
-      secuencia_actual: { codigo: cod, descripcion: desc },
+      secuencia_actual: { codigo: actual.codigo, descripcion: actual.descripcion },
+      secuencias: seqs,
       alerts,
     } };
   }
@@ -972,6 +1028,13 @@
     </section>
 
     <section>
+      <div class="sec-title" id="seq-sec-title">Secuencias de hoy</div>
+      <div id="seq-list">
+        <div class="skel"></div><div class="skel"></div>
+      </div>
+    </section>
+
+    <section>
       <div class="sec-title">Alertas KPI activas</div>
       <div id="kpi-alert-list">
         <div class="skel"></div><div class="skel"></div>
@@ -1103,7 +1166,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <line x1="4" y1="20" x2="4" y2="10"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="13"/><line x1="22" y1="20" x2="2" y2="20"/>
     </svg>
-    Dirección
+    Producción
     <span class="nav-badge zero" id="badge-kpi"></span>
   </button>
   <button class="nav-btn" id="nav-mantenimiento" onclick="showView('mantenimiento')">
@@ -1309,6 +1372,60 @@ function renderSpark(h) {
     'mín ' + Math.min(...vs).toFixed(1) + ' % · máx ' + Math.max(...vs).toFixed(1) + ' %';
 }
 
+// ── SECUENCIAS DEL DÍA ──
+const SEQ_STATE_LABEL = { done: '✔ Completada', nok: '⚠ Completada con NOK', curso: '● En curso', pend: 'Pendiente' };
+
+function seqEstado(s) {
+  const e = String(s.estado ?? '').toLowerCase();
+  if (e.includes('curso') || s.en_curso) return 'curso';
+  const completada = e.includes('complet') || e.includes('cerrad') || e.includes('finaliz') || s.completada;
+  if (completada) return (s.nok > 0 || e.includes('nok')) ? 'nok' : 'done';
+  return 'pend';
+}
+
+function fmtHora(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (!isNaN(d)) return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return String(v); // ya viene como "08:30"
+}
+
+function renderSeqList(kpi, plan) {
+  const cont = document.getElementById('seq-list');
+  const title = document.getElementById('seq-sec-title');
+  const seqs = kpi.secuencias ?? plan.secuencias ?? null;
+  if (!Array.isArray(seqs)) {
+    title.textContent = 'Secuencias de hoy';
+    cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
+    return;
+  }
+  const done = seqs.filter(s => ['done', 'nok'].includes(seqEstado(s))).length;
+  title.textContent = 'Secuencias de hoy · ' + done + ' / ' + seqs.length;
+  if (!seqs.length) {
+    cont.innerHTML = '<div class="empty-state">Sin secuencias planificadas para hoy.</div>';
+    return;
+  }
+  cont.innerHTML = seqs.map(s => {
+    const st = seqEstado(s);
+    const ini = fmtHora(s.hora_inicio ?? s.inicio);
+    const fin = fmtHora(s.hora_fin ?? s.fin);
+    const meta = [];
+    if (ini || fin) meta.push((ini || '—') + (fin ? ' → ' + fin : ''));
+    if (s.cantidad !== undefined && s.cantidad !== null) meta.push(esc(s.cantidad) + ' uds');
+    if (s.ok !== undefined && s.ok !== null) meta.push(esc(s.ok) + ' OK');
+    if (s.nok) meta.push('<span style="color:var(--red)">' + esc(s.nok) + ' NOK</span>');
+    return `
+      <div class="seq-card sq-${st}">
+        <div class="ac-head">
+          <span class="sq-code">${esc(s.codigo ?? s.numero ?? s.id)}</span>
+          <span class="sq-state">${SEQ_STATE_LABEL[st]}</span>
+        </div>
+        ${s.descripcion || s.articulo ? '<div class="ac-msg">' + esc(s.descripcion ?? s.articulo) + '</div>' : ''}
+        ${meta.length ? '<div class="ac-meta" style="margin-top:4px">' + meta.join(' · ') + '</div>' : ''}
+      </div>`;
+  }).join('');
+}
+
 let lastKpi = null;
 
 function renderKpi(kpi) {
@@ -1394,6 +1511,8 @@ function renderKpi(kpi) {
   setTile('tile-desviacion',
     desv === null || desv === undefined ? '—' : (desv > 0 ? '+' : '') + desv.toFixed(1) + ' %',
     stDesv);
+
+  renderSeqList(kpi, plan);
 
   // Lista final: alertas del servidor (menos las de KPI personalizados) + personales
   const overridden = THR_KEYS.filter(k => thr[k].en).flatMap(k => THR_SERVER_TYPES[k]);
