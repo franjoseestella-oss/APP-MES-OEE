@@ -13,13 +13,22 @@ ni compilación, con el código de colores Logisnext HMI.
 ## Qué muestra
 
 - **Dirección** 📊 — OEE del turno actual en un indicador circular animado con
-  estado (✔ OK / ⚠ Atención / ⛔ Crítico), Disponibilidad, Rendimiento y Calidad
-  con barras de progreso, plan de producción del día con barra de avance y
-  desviación, y lista de alertas KPI activas ordenadas por severidad.
+  estado (✔ OK / ⚠ Atención / ⛔ Crítico) y sparkline de evolución, Disponibilidad,
+  Rendimiento y Calidad con barras de progreso, plan de producción del día con
+  barra de avance, desviación e indicador de secuencia actual (si el backend
+  envía `secuencia_actual` en el resumen), y lista de alertas KPI activas ordenadas por
+  severidad.
+- **Mis alertas** 🎚 — cada usuario puede activar sus propios umbrales (OEE,
+  Disponibilidad, Rendimiento, Calidad y desviación del plan). Un KPI
+  personalizado se evalúa con el límite del usuario en lugar del que marca el
+  servidor y genera alertas etiquetadas como «Personal». Se guarda por usuario
+  en el dispositivo.
 - **Mantenimiento** 🔧 — alarmas y advertencias activas y registro de alarmas
   (`LOG_ALARMAS`) con filtros por estado y tipo, y hora relativa
   («hace 22 min») en cada registro.
-- **Ajustes** ⚙️ — URL del servidor MES e ID de máquina (se guardan en el móvil).
+- **Ajustes** ⚙️ — URL del servidor MES e ID de máquina (se guardan en el móvil),
+  notificaciones push y aviso sonoro/vibración opcional cuando aparece una
+  alarma activa nueva con la app abierta.
 
 Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
 app está en segundo plano; al volver a primer plano o recuperar la red se

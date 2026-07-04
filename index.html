@@ -447,6 +447,93 @@
     animation: shimmer 1.4s linear infinite;
   }
 
+  /* ── SPARKLINE OEE ── */
+  .spark-wrap { margin-top: 12px; }
+  .spark-wrap svg { width: 100%; height: 40px; display: block; }
+  .spark-line { fill: none; stroke: var(--label); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .spark-area { fill: rgba(139,148,166,0.12); stroke: none; }
+  .spark-dot  { fill: var(--label); }
+  .tile.st-ok .spark-line       { stroke: var(--green); }
+  .tile.st-ok .spark-area       { fill: rgba(52,216,119,0.12); }
+  .tile.st-ok .spark-dot        { fill: var(--green); }
+  .tile.st-warning .spark-line  { stroke: var(--amber); }
+  .tile.st-warning .spark-area  { fill: rgba(255,176,32,0.12); }
+  .tile.st-warning .spark-dot   { fill: var(--amber); }
+  .tile.st-critical .spark-line { stroke: var(--red); }
+  .tile.st-critical .spark-area { fill: rgba(255,59,77,0.12); }
+  .tile.st-critical .spark-dot  { fill: var(--red); }
+  .spark-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--label);
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── MIS ALERTAS (umbrales personales) ── */
+  .thr-card {
+    background: linear-gradient(160deg, var(--card-2), var(--card));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .thr-hint { font-size: 10px; color: var(--label); line-height: 1.5; margin-bottom: 12px; }
+  .thr-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+  }
+  .thr-name { flex: 1; font-size: 11px; letter-spacing: 0.04em; }
+  .thr-row.off .thr-name { color: var(--label); }
+  .thr-val { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--label); }
+  .thr-val input {
+    width: 58px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 13px;
+    font-family: var(--font);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+  }
+  .thr-val input:focus { border-color: var(--cyan); }
+  .thr-row.off .thr-val input { opacity: 0.4; }
+  .switch { position: relative; display: inline-block; width: 36px; height: 21px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .sl {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 21px;
+    transition: background 0.2s ease;
+    cursor: pointer;
+  }
+  .switch .sl::before {
+    content: '';
+    position: absolute;
+    width: 15px; height: 15px;
+    left: 3px; top: 3px;
+    border-radius: 50%;
+    background: var(--label);
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+  .switch input:checked + .sl { background: rgba(43,217,229,0.35); }
+  .switch input:checked + .sl::before { transform: translateX(15px); background: var(--cyan); }
+  .sev-badge.personal {
+    border-color: rgba(255,46,146,0.6);
+    color: var(--magenta);
+    background: rgba(255,46,146,0.1);
+  }
+  .ac-badges { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+
   /* ── FILTER CHIPS ── */
   .filter-row {
     display: flex;
@@ -740,6 +827,14 @@
             <div class="hero-shift" id="hero-shift">Esperando datos del servidor…</div>
           </div>
         </div>
+        <div class="spark-wrap" id="spark-wrap" style="display:none">
+          <svg viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true">
+            <path class="spark-area" id="spark-area" d=""/>
+            <path class="spark-line" id="spark-line" d=""/>
+            <circle class="spark-dot" id="spark-dot" r="3"/>
+          </svg>
+          <div class="spark-meta"><span>Evolución OEE</span><span id="spark-range">—</span></div>
+        </div>
       </div>
       <div class="grid-3">
         <div class="tile st-none" id="tile-availability">
@@ -773,6 +868,11 @@
       </div>
       <div class="plan-progress"><div class="pp-fill" id="plan-progress-fill"></div></div>
       <div class="pp-meta"><span>Avance del plan</span><span id="plan-progress-label">—</span></div>
+      <div class="tile st-cyan" id="tile-secuencia" style="margin-bottom:8px">
+        <div class="t-label">Secuencia actual</div>
+        <div class="t-value" style="font-size:20px">—</div>
+        <div class="t-status">Sin datos</div>
+      </div>
       <div class="tile st-none" id="tile-desviacion">
         <div class="t-label">Desviación del plan</div>
         <div class="t-value">—</div>
@@ -784,6 +884,43 @@
       <div class="sec-title">Alertas KPI activas</div>
       <div id="kpi-alert-list">
         <div class="skel"></div><div class="skel"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Mis alertas — ajuste personal</div>
+      <div class="thr-card">
+        <div class="thr-hint">
+          Activa un umbral para que ese KPI se evalúe con <b>tu</b> límite en lugar
+          del que marca el servidor. Solo afecta a tu usuario en este dispositivo:
+          colorea las tarjetas y genera tus propias alertas
+          <span class="sev-badge personal" style="font-size:7px">Personal</span>.
+        </div>
+        <div class="thr-row" id="thr-row-oee">
+          <label class="switch"><input type="checkbox" id="thr-en-oee"><span class="sl"></span></label>
+          <span class="thr-name">OEE mínimo</span>
+          <div class="thr-val"><input type="number" id="thr-v-oee" min="1" max="100" step="1" inputmode="numeric"><span>%</span></div>
+        </div>
+        <div class="thr-row" id="thr-row-availability">
+          <label class="switch"><input type="checkbox" id="thr-en-availability"><span class="sl"></span></label>
+          <span class="thr-name">Disponibilidad mínima</span>
+          <div class="thr-val"><input type="number" id="thr-v-availability" min="1" max="100" step="1" inputmode="numeric"><span>%</span></div>
+        </div>
+        <div class="thr-row" id="thr-row-performance">
+          <label class="switch"><input type="checkbox" id="thr-en-performance"><span class="sl"></span></label>
+          <span class="thr-name">Rendimiento mínimo</span>
+          <div class="thr-val"><input type="number" id="thr-v-performance" min="1" max="100" step="1" inputmode="numeric"><span>%</span></div>
+        </div>
+        <div class="thr-row" id="thr-row-quality">
+          <label class="switch"><input type="checkbox" id="thr-en-quality"><span class="sl"></span></label>
+          <span class="thr-name">Calidad mínima</span>
+          <div class="thr-val"><input type="number" id="thr-v-quality" min="1" max="100" step="1" inputmode="numeric"><span>%</span></div>
+        </div>
+        <div class="thr-row" id="thr-row-plan">
+          <label class="switch"><input type="checkbox" id="thr-en-plan"><span class="sl"></span></label>
+          <span class="thr-name">Desviación máx. del plan</span>
+          <div class="thr-val"><span>±</span><input type="number" id="thr-v-plan" min="1" max="100" step="1" inputmode="numeric"><span>%</span></div>
+        </div>
       </div>
     </section>
   </div>
@@ -844,6 +981,8 @@
       <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
       <div class="test-result" id="push-result" role="status"></div>
       <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, aunque tengas la app cerrada. La primera vez el navegador te pedirá permiso para notificaciones.</div>
+      <button class="btn" id="btn-avisos" onclick="toggleAvisos()" style="margin-top:14px">Activar sonido y vibración</button>
+      <div class="form-hint">Con la app abierta, pita y vibra cuando aparece una alarma activa nueva de mantenimiento.</div>
     </section>
     <section>
       <div class="sec-title">Información</div>
@@ -977,29 +1116,168 @@ function relTime(iso) {
   return 'hace ' + h + ' h' + (mins % 60 ? ' ' + (mins % 60) + ' min' : '');
 }
 
+// ── UMBRALES PERSONALES ──
+const THR_KEYS = ['oee', 'availability', 'performance', 'quality', 'plan'];
+const THR_DEFAULTS = { oee: 75, availability: 85, performance: 90, quality: 95, plan: 5 };
+const THR_LABEL = { oee: 'OEE', availability: 'Disponibilidad', performance: 'Rendimiento', quality: 'Calidad' };
+const THR_SERVER_TYPES = {
+  oee: ['oee_below_target'],
+  availability: ['low_availability'],
+  performance: ['low_performance'],
+  quality: ['low_quality'],
+  plan: ['deviation_plan', 'high_reject_rate'],
+};
+
+function thrStoreKey() {
+  const s = getSession();
+  return 'ln_thr_' + ((s && (s.codigo || s.apellidos)) || 'anon');
+}
+
+function getThr() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(thrStoreKey()) || '{}') || {}; } catch (e) {}
+  const out = {};
+  for (const k of THR_KEYS) {
+    const s = saved[k] || {};
+    out[k] = { en: !!s.en, val: isFinite(s.val) && s.val > 0 ? s.val : THR_DEFAULTS[k] };
+  }
+  return out;
+}
+
+function initThrUI() {
+  const thr = getThr();
+  for (const k of THR_KEYS) {
+    document.getElementById('thr-en-' + k).checked = thr[k].en;
+    document.getElementById('thr-v-' + k).value = thr[k].val;
+    document.getElementById('thr-row-' + k).classList.toggle('off', !thr[k].en);
+  }
+}
+
+function onThrChange() {
+  const thr = {};
+  for (const k of THR_KEYS) {
+    const v = parseFloat(document.getElementById('thr-v-' + k).value);
+    thr[k] = {
+      en: document.getElementById('thr-en-' + k).checked,
+      val: isFinite(v) && v > 0 ? Math.min(100, v) : THR_DEFAULTS[k],
+    };
+    document.getElementById('thr-row-' + k).classList.toggle('off', !thr[k].en);
+  }
+  localStorage.setItem(thrStoreKey(), JSON.stringify(thr));
+  if (lastKpi) renderKpi(lastKpi);
+}
+
+for (const k of THR_KEYS) {
+  document.getElementById('thr-en-' + k).addEventListener('change', onThrChange);
+  document.getElementById('thr-v-' + k).addEventListener('change', onThrChange);
+}
+
+// Estado personal de un KPI: OK sobre el umbral, atención justo por debajo,
+// crítico a partir de 8 puntos por debajo.
+function personalStatus(value, limit) {
+  if (value >= limit) return 'ok';
+  return value >= limit - 8 ? 'warning' : 'critical';
+}
+
+// ── HISTÓRICO OEE (sparkline) ──
+function histKey() { return 'ln_hist_' + cfg().machine; }
+
+function pushHist(v) {
+  if (v === null || v === undefined) return loadHist();
+  let h = loadHist();
+  const now = Date.now();
+  if (!h.length || now - h[h.length - 1].t >= 25000) {
+    h.push({ t: now, v: +v });
+    h = h.filter(p => p.t >= now - 12 * 3600e3).slice(-48);
+    try { localStorage.setItem(histKey(), JSON.stringify(h)); } catch (e) {}
+  }
+  return h;
+}
+
+function loadHist() {
+  try { return JSON.parse(localStorage.getItem(histKey()) || '[]') || []; } catch (e) { return []; }
+}
+
+function renderSpark(h) {
+  const wrap = document.getElementById('spark-wrap');
+  if (!h || h.length < 2) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  const W = 300, H = 40, pad = 4;
+  const vs = h.map(p => p.v);
+  let min = Math.min(...vs), max = Math.max(...vs);
+  if (max - min < 4) { const m = (max + min) / 2; min = m - 2; max = m + 2; }
+  const x = i => pad + (W - 2 * pad) * i / (h.length - 1);
+  const y = v => H - pad - (H - 2 * pad) * (v - min) / (max - min);
+  const line = h.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
+  document.getElementById('spark-line').setAttribute('d', line);
+  document.getElementById('spark-area').setAttribute('d',
+    line + 'L' + x(h.length - 1).toFixed(1) + ' ' + H + 'L' + x(0).toFixed(1) + ' ' + H + 'Z');
+  const dot = document.getElementById('spark-dot');
+  dot.setAttribute('cx', x(h.length - 1).toFixed(1));
+  dot.setAttribute('cy', y(vs[vs.length - 1]).toFixed(1));
+  document.getElementById('spark-range').textContent =
+    'mín ' + Math.min(...vs).toFixed(1) + ' % · máx ' + Math.max(...vs).toFixed(1) + ' %';
+}
+
+let lastKpi = null;
+
 function renderKpi(kpi) {
+  lastKpi = kpi;
   const alerts = kpi.alerts || [];
   const plan = kpi.plan || {};
+  const thr = getThr();
+  const personalAlerts = [];
 
   document.getElementById('kpi-sec-title').textContent =
     'KPI del turno' + (kpi.shift_label ? ' ' + kpi.shift_label : '') + ' · ' + kpi.machine_id;
   document.getElementById('hero-shift').textContent =
     (kpi.shift_label ? 'Turno ' + kpi.shift_label + ' · ' : '') + 'Máquina ' + kpi.machine_id;
 
-  const mk = (id, value, types) => setTile(
-    id, fmtPct(value),
-    value === null || value === undefined ? 'none' : statusFromAlerts(alerts, types),
-    value);
-  mk('tile-oee', kpi.oee, ['oee_below_target']);
-  mk('tile-availability', kpi.availability, ['low_availability']);
-  mk('tile-performance', kpi.performance, ['low_performance']);
-  mk('tile-quality', kpi.quality, ['low_quality']);
+  const mk = (id, value, key) => {
+    let st;
+    if (value === null || value === undefined) {
+      st = 'none';
+    } else if (thr[key].en) {
+      st = personalStatus(value, thr[key].val);
+      if (st !== 'ok') personalAlerts.push({
+        severity: st, personal: true,
+        value: value.toFixed(1) + ' %', threshold: thr[key].val + ' %',
+        message: THR_LABEL[key] + ' por debajo de tu umbral personal',
+      });
+    } else {
+      st = statusFromAlerts(alerts, THR_SERVER_TYPES[key]);
+    }
+    setTile(id, fmtPct(value), st, value);
+  };
+  mk('tile-oee', kpi.oee, 'oee');
+  mk('tile-availability', kpi.availability, 'availability');
+  mk('tile-performance', kpi.performance, 'performance');
+  mk('tile-quality', kpi.quality, 'quality');
   setGauge(kpi.oee);
+  renderSpark(pushHist(kpi.oee));
 
   document.getElementById('plan-planificadas').textContent = plan.planificadas ?? '—';
   document.getElementById('plan-completadas').textContent = plan.completadas ?? '—';
   document.getElementById('plan-ok').textContent = plan.ok ?? '—';
   document.getElementById('plan-nok').textContent = plan.nok ?? '—';
+
+  // Secuencia en curso: admite un código simple o un objeto con detalle.
+  // Si el backend aún no envía el campo, la tarjeta queda en «Sin datos».
+  const seq = kpi.secuencia_actual ?? kpi.current_sequence
+    ?? plan.secuencia_actual ?? plan.secuencia ?? null;
+  const seqTile = document.getElementById('tile-secuencia');
+  const seqVal = seqTile.querySelector('.t-value');
+  const seqSt = seqTile.querySelector('.t-status');
+  if (seq === null || seq === undefined || seq === '') {
+    seqVal.textContent = '—';
+    seqSt.textContent = 'Sin datos';
+  } else if (typeof seq === 'object') {
+    seqVal.textContent = seq.codigo ?? seq.numero ?? seq.id ?? '—';
+    seqSt.textContent = seq.descripcion ?? seq.articulo ?? 'En curso';
+  } else {
+    seqVal.textContent = seq;
+    seqSt.textContent = 'En curso';
+  }
 
   const done = plan.completadas || 0;
   const total = plan.planificadas || 0;
@@ -1008,24 +1286,44 @@ function renderKpi(kpi) {
   document.getElementById('plan-progress-label').textContent =
     total > 0 ? done + ' / ' + total + ' · ' + progress.toFixed(0) + ' %' : '—';
 
+  let stDesv = 'none';
+  const desv = plan.desviacion_pct;
+  if (total > 0 && desv !== null && desv !== undefined) {
+    if (thr.plan.en) {
+      const d = Math.abs(desv);
+      stDesv = d <= thr.plan.val ? 'ok' : d <= thr.plan.val * 2 ? 'warning' : 'critical';
+      if (stDesv !== 'ok') personalAlerts.push({
+        severity: stDesv, personal: true,
+        value: (desv > 0 ? '+' : '') + desv.toFixed(1) + ' %', threshold: '±' + thr.plan.val + ' %',
+        message: 'Desviación del plan fuera de tu umbral personal',
+      });
+    } else {
+      stDesv = statusFromAlerts(alerts, THR_SERVER_TYPES.plan);
+    }
+  }
   setTile('tile-desviacion',
-    plan.desviacion_pct === null || plan.desviacion_pct === undefined
-      ? '—'
-      : (plan.desviacion_pct > 0 ? '+' : '') + plan.desviacion_pct.toFixed(1) + ' %',
-    total > 0 ? statusFromAlerts(alerts, ['deviation_plan', 'high_reject_rate']) : 'none');
+    desv === null || desv === undefined ? '—' : (desv > 0 ? '+' : '') + desv.toFixed(1) + ' %',
+    stDesv);
+
+  // Lista final: alertas del servidor (menos las de KPI personalizados) + personales
+  const overridden = THR_KEYS.filter(k => thr[k].en).flatMap(k => THR_SERVER_TYPES[k]);
+  const shown = alerts.filter(a => !overridden.includes(a.type)).concat(personalAlerts);
 
   const list = document.getElementById('kpi-alert-list');
-  if (!alerts.length) {
+  if (!shown.length) {
     list.innerHTML = '<div class="empty-state"><div class="big">✔ Sin alertas activas</div>' +
       'Todos los KPI dentro de los umbrales.</div>';
   } else {
     const order = { critical: 0, warning: 1, info: 2 };
-    list.innerHTML = alerts
+    list.innerHTML = shown
       .slice().sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
       .map(a => `
         <div class="alert-card sev-${esc(a.severity)}">
           <div class="ac-head">
-            <span class="sev-badge sev-${esc(a.severity)}">${SEV_TEXT[a.severity] || esc(a.severity)}</span>
+            <span class="ac-badges">
+              <span class="sev-badge sev-${esc(a.severity)}">${SEV_TEXT[a.severity] || esc(a.severity)}</span>
+              ${a.personal ? '<span class="sev-badge personal">Personal</span>' : ''}
+            </span>
             <span class="ac-meta">valor ${esc(a.value)} · umbral ${esc(a.threshold)}</span>
           </div>
           <div class="ac-msg">${esc(a.message)}</div>
@@ -1033,10 +1331,52 @@ function renderKpi(kpi) {
   }
 
   const badge = document.getElementById('badge-kpi');
-  const n = (kpi.critical || 0) + (kpi.warning || 0);
+  const n = shown.filter(a => a.severity === 'critical' || a.severity === 'warning').length;
   badge.textContent = n || '';
   badge.classList.toggle('zero', n === 0);
 }
+
+// ── AVISOS SONOROS / VIBRACIÓN ──
+let audioCtx = null;
+
+function avisosOn() { return localStorage.getItem('ln_avisos') === '1'; }
+
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(880, t);
+    o.frequency.setValueAtTime(660, t + 0.15);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + 0.32);
+  } catch (e) {}
+}
+
+function toggleAvisos() {
+  if (avisosOn()) {
+    localStorage.setItem('ln_avisos', '0');
+  } else {
+    localStorage.setItem('ln_avisos', '1');
+    // El primer toque del usuario permite crear el contexto de audio
+    beep();
+    if (navigator.vibrate) navigator.vibrate(80);
+  }
+  updateAvisosUI();
+}
+
+function updateAvisosUI() {
+  document.getElementById('btn-avisos').textContent =
+    avisosOn() ? 'Desactivar sonido y vibración' : 'Activar sonido y vibración';
+}
+
+let prevActivas = null;
 
 function renderMaintenanceCounts(m) {
   setTile('tile-alarmas-activas', m.alarmas_activas, m.alarmas_activas > 0 ? 'critical' : 'ok');
@@ -1044,6 +1384,11 @@ function renderMaintenanceCounts(m) {
   const badge = document.getElementById('badge-mant');
   badge.textContent = m.total_activas || '';
   badge.classList.toggle('zero', m.total_activas === 0);
+  if (prevActivas !== null && m.total_activas > prevActivas && avisosOn()) {
+    beep();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  }
+  prevActivas = m.total_activas;
 }
 
 function renderAlarms(alarmas) {
@@ -1251,6 +1596,8 @@ function enterApp(user) {
 
   showView(views.length ? views[0] : 'ajustes');
 
+  initThrUI();
+  updateAvisosUI();
   refreshAll();
   startAutoRefresh();
   registerServiceWorker().then(() => updatePushStatusUI());
