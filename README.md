@@ -12,14 +12,20 @@ ni compilación, con el código de colores Logisnext HMI.
 
 ## Qué muestra
 
-- **Dirección** 📊 — OEE del turno actual con estado (✔ OK / ⚠ Atención / ⛔ Crítico),
-  Disponibilidad, Rendimiento y Calidad, plan de producción del día con desviación,
-  y lista de alertas KPI activas ordenadas por severidad.
+- **Dirección** 📊 — OEE del turno actual en un indicador circular animado con
+  estado (✔ OK / ⚠ Atención / ⛔ Crítico), Disponibilidad, Rendimiento y Calidad
+  con barras de progreso, plan de producción del día con barra de avance y
+  desviación, y lista de alertas KPI activas ordenadas por severidad.
 - **Mantenimiento** 🔧 — alarmas y advertencias activas y registro de alarmas
-  (`LOG_ALARMAS`) con filtros por estado y tipo.
+  (`LOG_ALARMAS`) con filtros por estado y tipo, y hora relativa
+  («hace 22 min») en cada registro.
 - **Ajustes** ⚙️ — URL del servidor MES e ID de máquina (se guardan en el móvil).
 
-Los datos se actualizan automáticamente cada 30 segundos.
+Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
+app está en segundo plano; al volver a primer plano o recuperar la red se
+refresca al instante). El botón ↻ de la cabecera fuerza una actualización.
+El *service worker* cachea la interfaz, así que la app abre incluso sin
+conexión (mostrando el aviso de «Sin conexión» hasta recuperar el servidor).
 
 ## Requisitos
 
@@ -69,9 +75,9 @@ dentro de la misma WiFi.
 
 | Color | Uso |
 |-------|-----|
-| `#2FD06A` verde | OK / Execute |
-| `#F4A623` ámbar | Advertencia / espera |
-| `#E32636` rojo | Alarma / crítico |
-| `#25C9D6` cian | Datos |
-| `#000000` / `#121212` | Fondo / tarjeta |
-| `#8B92A0` gris | Etiquetas |
+| `#34D877` verde | OK / Execute |
+| `#FFB020` ámbar | Advertencia / espera |
+| `#FF3B4D` rojo | Alarma / crítico |
+| `#2BD9E5` cian | Datos / acento |
+| `#060A10` / `#0D1219` | Fondo / tarjeta |
+| `#8B94A6` gris | Etiquetas |
