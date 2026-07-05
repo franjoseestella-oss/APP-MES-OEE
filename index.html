@@ -27,8 +27,12 @@
     --amber:   #FFB020;
     --cyan:    #2BD9E5;
     --magenta: #FF2E92;
-    --brand:   #E60012;           /* Rojo corporativo Mitsubishi Logisnext */
+    /* Color de marca (provisional hasta confirmar con la web corporativa).
+       Para cambiar la identidad basta con tocar estas cuatro líneas. */
+    --brand:      #E60012;
+    --brand-dark: #B4000E;
     --brand-soft: rgba(230,0,18,0.12);
+    --brand-glow: rgba(230,0,18,0.4);
     --radius:  14px;
     --font: 'Barlow', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
   }
@@ -39,7 +43,7 @@
   body {
     background: var(--bg);
     background-image:
-      radial-gradient(ellipse 80% 40% at 50% -10%, rgba(230,0,18,0.05), transparent),
+      radial-gradient(ellipse 80% 40% at 50% -10%, var(--brand-soft), transparent),
       radial-gradient(ellipse 60% 30% at 100% 100%, rgba(255,255,255,0.02), transparent);
     background-attachment: fixed;
     color: var(--text);
@@ -78,7 +82,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
-    box-shadow: 0 1px 0 rgba(230,0,18,0.5), 0 8px 24px rgba(0,0,0,0.4);
+    box-shadow: 0 1px 0 var(--brand-glow), 0 8px 24px rgba(0,0,0,0.4);
     padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px;
     display: flex;
     align-items: center;
@@ -670,7 +674,7 @@
     background: var(--label);
     transition: transform 0.2s ease, background 0.2s ease;
   }
-  .switch input:checked + .sl { background: rgba(230,0,18,0.4); }
+  .switch input:checked + .sl { background: var(--brand-glow); }
   .switch input:checked + .sl::before { transform: translateX(15px); background: var(--brand); }
   .sev-badge.personal {
     border-color: rgba(255,46,146,0.6);
@@ -704,7 +708,7 @@
     border-color: var(--brand);
     color: #FFFFFF;
     background: var(--brand-soft);
-    box-shadow: 0 0 10px rgba(230,0,18,0.2);
+    box-shadow: 0 0 10px var(--brand-soft);
   }
 
   /* ── AJUSTES / FORMULARIOS ── */
@@ -731,7 +735,7 @@
   }
   .form-group input:focus {
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(230,0,18,0.15);
+    box-shadow: 0 0 0 3px var(--brand-soft);
   }
   .form-hint { font-size: 10px; color: var(--label); margin-top: 6px; line-height: 1.45; }
   .btn {
@@ -749,9 +753,9 @@
     cursor: pointer;
     margin-bottom: 10px;
     transition: background 0.15s ease, opacity 0.15s ease;
-    box-shadow: 0 4px 14px rgba(230,0,18,0.25);
+    box-shadow: 0 4px 14px var(--brand-soft);
   }
-  .btn:active { background: #B4000E; border-color: #B4000E; }
+  .btn:active { background: var(--brand-dark); border-color: var(--brand-dark); }
   .btn:disabled { opacity: 0.5; cursor: default; }
   .btn.danger {
     border-color: var(--border-2);
@@ -788,7 +792,7 @@
     border: 1px solid var(--border);
     border-radius: 20px;
     padding: 30px 24px 24px;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(230,0,18,0.08);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--brand-soft);
     animation: fadeUp 0.4s ease both;
   }
   .login-mark {
@@ -798,7 +802,7 @@
     background: var(--brand);
     display: flex; align-items: center; justify-content: center;
     font-size: 30px; font-weight: 800; color: #FFFFFF;
-    box-shadow: 0 8px 24px rgba(230,0,18,0.35);
+    box-shadow: 0 8px 24px var(--brand-glow);
   }
   .login-logo {
     font-size: 28px;
@@ -870,7 +874,7 @@
   }
   .nav-btn svg { width: 20px; height: 20px; }
   .nav-btn.active { color: #FFFFFF; border-top-color: var(--brand); }
-  .nav-btn.active svg { color: var(--brand); filter: drop-shadow(0 0 6px rgba(230,0,18,0.45)); }
+  .nav-btn.active svg { color: var(--brand); filter: drop-shadow(0 0 6px var(--brand-glow)); }
   .nav-badge {
     position: absolute;
     top: 5px;
