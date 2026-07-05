@@ -28,8 +28,15 @@
     /* Identidad Logisnext (logisnext.eu): azul pizarra + blanco */
     --brand:      #56737F;
     --brand-dark: #40565F;
+    --brand-ink:  #40565F;
     --brand-soft: rgba(86,115,127,0.12);
     --brand-glow: rgba(86,115,127,0.35);
+    --input-bg:   #FAFBFC;
+    --nav-bg:     rgba(255,255,255,0.97);
+    --skel1:      #E5EAEC;
+    --skel2:      #F4F7F8;
+    --switch-off: #CBD4D9;
+    --track:      rgba(38,57,66,0.1);
     --radius:  14px;
     --font: 'Archivo', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
   }
@@ -243,7 +250,7 @@
     margin-top: 8px;
     height: 4px;
     border-radius: 3px;
-    background: rgba(38,57,66,0.1);
+    background: var(--track);
     overflow: hidden;
   }
   .t-bar-fill {
@@ -263,19 +270,19 @@
   .tile.st-warning .t-value,  .tile.st-warning .t-status  { color: var(--amber); }
   .tile.st-critical .t-value, .tile.st-critical .t-status { color: var(--red); }
   .tile.st-none .t-value,     .tile.st-none .t-status     { color: var(--label); }
-  .tile.st-cyan .t-value { color: var(--brand-dark); }
+  .tile.st-cyan .t-value { color: var(--brand-ink); }
   .tile.st-ok .t-bar-fill       { background: linear-gradient(90deg, #1F8A4C, var(--green)); }
   .tile.st-warning .t-bar-fill  { background: linear-gradient(90deg, #B57708, var(--amber)); }
   .tile.st-critical .t-bar-fill { background: linear-gradient(90deg, #A31220, var(--red)); }
 
   /* ── HERO OEE + GAUGE ── */
-  .tile.hero { padding: 16px; }
+  .tile.hero { padding: 16px; cursor: pointer; }
   .hero-flex { display: flex; align-items: center; gap: 18px; }
   .gauge { position: relative; width: 128px; height: 128px; flex-shrink: 0; }
   .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
   .g-track {
     fill: none;
-    stroke: rgba(38,57,66,0.1);
+    stroke: var(--track);
     stroke-width: 9;
   }
   .g-fill {
@@ -336,12 +343,12 @@
   .chip .c-lbl { font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); margin-top: 3px; }
   .chip.ok .c-num { color: var(--green); }
   .chip.nok .c-num { color: var(--red); }
-  .chip.cyan .c-num { color: var(--brand-dark); }
+  .chip.cyan .c-num { color: var(--brand-ink); }
 
   .plan-progress {
     height: 6px;
     border-radius: 4px;
-    background: rgba(38,57,66,0.1);
+    background: var(--track);
     overflow: hidden;
     margin-bottom: 6px;
   }
@@ -444,7 +451,7 @@
     border: 1px solid var(--border);
     height: 58px;
     margin-bottom: 8px;
-    background: linear-gradient(90deg, #E5EAEC 25%, #F4F7F8 50%, #E5EAEC 75%);
+    background: linear-gradient(90deg, var(--skel1) 25%, var(--skel2) 50%, var(--skel1) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.4s linear infinite;
   }
@@ -560,7 +567,7 @@
     height: 8px;
     border-radius: 4px;
     overflow: hidden;
-    background: rgba(38,57,66,0.1);
+    background: var(--track);
     margin: 12px 0 4px;
   }
   .qbar .qb-ok  { background: linear-gradient(90deg, #1F8A4C, var(--green)); }
@@ -632,7 +639,7 @@
   .thr-val { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--label); }
   .thr-val input {
     width: 58px;
-    background: #FAFBFC;
+    background: var(--input-bg);
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: 8px;
@@ -649,7 +656,7 @@
   .switch input { opacity: 0; width: 0; height: 0; }
   .switch .sl {
     position: absolute; inset: 0;
-    background: #CBD4D9;
+    background: var(--switch-off);
     border-radius: 21px;
     transition: background 0.2s ease;
     cursor: pointer;
@@ -681,7 +688,7 @@
     margin-bottom: 10px;
   }
   .fchip {
-    background: #FFFFFF;
+    background: var(--card);
     border: 1px solid var(--border);
     color: var(--label);
     border-radius: 20px;
@@ -713,7 +720,7 @@
   }
   .form-group input {
     width: 100%;
-    background: #FAFBFC;
+    background: var(--input-bg);
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: var(--radius);
@@ -824,7 +831,7 @@
   nav {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: rgba(255,255,255,0.97);
+    background: var(--nav-bg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
@@ -854,7 +861,7 @@
     transition: color 0.15s ease;
   }
   .nav-btn svg { width: 20px; height: 20px; }
-  .nav-btn.active { color: var(--brand-dark); border-top-color: var(--brand); }
+  .nav-btn.active { color: var(--brand-ink); border-top-color: var(--brand); }
   .nav-btn.active svg { color: var(--brand); }
   .nav-badge {
     position: absolute;
@@ -874,6 +881,58 @@
     box-shadow: 0 0 8px rgba(255,59,77,0.6);
   }
   .nav-badge.zero { display: none; }
+
+  /* ── TEMA OSCURO (turno de noche) ── */
+  html[data-theme="dark"] {
+    --bg:      #10161A;
+    --card:    #1A2228;
+    --card-2:  #1A2228;
+    --border:  #2B353C;
+    --border-2:#3D4A53;
+    --text:    #E9EEF1;
+    --label:   #93A4AD;
+    --green:   #35C671;
+    --red:     #F2606A;
+    --amber:   #E8A23C;
+    --cyan:    #3FB9C8;
+    --magenta: #E4569C;
+    --brand-ink: #A9C4CF;
+    --input-bg: #141B20;
+    --nav-bg:   rgba(16,22,26,0.97);
+    --skel1:    #232D34;
+    --skel2:    #2B3840;
+    --switch-off: #3D4A53;
+    --track:    rgba(255,255,255,0.1);
+  }
+  html[data-theme="dark"] .error-banner {
+    background: rgba(242,96,106,0.12);
+    border-color: rgba(242,96,106,0.45);
+    color: #FF9AA1;
+  }
+  html[data-theme="dark"] .login-logo { color: #CFE0E7; }
+
+  /* ── DESLIZA PARA REFRESCAR ── */
+  #ptr {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    left: 50%;
+    z-index: 5;
+    width: 34px; height: 34px;
+    margin-left: -17px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(38,57,66,0.2);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--brand-ink);
+    opacity: 0;
+    transform: translateY(-14px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+  }
+  #ptr.pull { transition: none; }
+  #ptr.go svg { animation: spin 0.9s linear infinite; }
+  #ptr svg { width: 16px; height: 16px; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -1082,6 +1141,12 @@
   <div class="conn-dot" id="conn-dot">—</div>
 </header>
 
+<div id="ptr" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>
+  </svg>
+</div>
+
 <main>
   <div class="error-banner" id="error-banner" role="alert">
     ⚠ Sin conexión con el servidor. Revisa la URL en Ajustes y que el móvil esté en la misma red que el servidor MES.
@@ -1096,7 +1161,7 @@
   <div class="view active" id="view-direccion">
     <section>
       <div class="sec-title" id="kpi-sec-title">KPI del turno actual</div>
-      <div class="tile hero st-none" id="tile-oee">
+      <div class="tile hero st-none" id="tile-oee" onclick="openOeeSheet()" title="Toca para ver la evolución">
         <div class="hero-flex">
           <div class="gauge">
             <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -1217,6 +1282,11 @@
         </div>
       </div>
     </section>
+
+    <section>
+      <button class="btn" onclick="compartirResumen()">📤 Compartir resumen del turno</button>
+      <div class="form-hint" style="text-align:center">Envía el OEE, el plan y las alertas por WhatsApp, correo…</div>
+    </section>
   </div>
 
   <!-- ════ CALIDAD ════ -->
@@ -1268,6 +1338,9 @@
 
     <section>
       <div class="sec-title">Registro de alarmas</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <input type="search" id="alarm-search" placeholder="Buscar por texto, número o tipo…" autocomplete="off">
+      </div>
       <div class="filter-row" id="filter-estado">
         <button class="fchip active" data-value="todas">Todas</button>
         <button class="fchip" data-value="activas">Solo activas</button>
@@ -1299,6 +1372,19 @@
       <button class="btn" onclick="saveSettings()">Guardar y probar conexión</button>
       <div class="test-result" id="test-result" role="status"></div>
     </section>
+    <section>
+      <div class="sec-title">Apariencia y pantalla</div>
+      <div class="filter-row" id="theme-row">
+        <button class="fchip" data-value="claro">☀ Claro</button>
+        <button class="fchip" data-value="oscuro">🌙 Oscuro</button>
+        <button class="fchip" data-value="auto">Auto</button>
+      </div>
+      <button class="btn" id="btn-wake" onclick="toggleWake()" style="margin-top:8px">Mantener pantalla encendida</button>
+      <div class="test-result" id="wake-result" role="status"></div>
+      <div class="form-hint">Útil si dejas el móvil o una tablet como panel fijo en planta: evita que se apague la pantalla mientras la app está abierta.</div>
+      <button class="btn" id="btn-install" style="display:none;margin-top:8px" onclick="installApp()">📲 Instalar aplicación</button>
+    </section>
+
     <section>
       <div class="sec-title">Notificaciones</div>
       <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
@@ -2119,6 +2205,8 @@ function renderKpi(kpi) {
   const n = shown.filter(a => a.severity === 'critical' || a.severity === 'warning').length;
   badge.textContent = n || '';
   badge.classList.toggle('zero', n === 0);
+  kpiBadgeN = n;
+  updateAppBadge();
 }
 
 // ── AVISOS SONOROS / VIBRACIÓN ──
@@ -2174,6 +2262,8 @@ function renderMaintenanceCounts(m) {
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
   }
   prevActivas = m.total_activas;
+  mantBadgeN = m.total_activas || 0;
+  updateAppBadge();
 }
 
 function renderAlarms(alarmas) {
@@ -2232,7 +2322,8 @@ async function refreshAll() {
     ]);
     renderKpi(summary.kpi);
     renderMaintenanceCounts(maint);
-    renderAlarms(maint.alarmas);
+    lastAlarms = maint.alarmas || [];
+    renderAlarms(filtrarAlarmas());
     setConnection(true);
   } catch (e) {
     console.error('Error actualizando:', e);
@@ -2391,6 +2482,8 @@ function enterApp(user) {
     for (let i = 25; i >= 1; i--) h.push({ t: now - i * 60000, v: +(72 + 6 * Math.sin(i / 3.2)).toFixed(1) });
     try { localStorage.setItem(histKey(), JSON.stringify(h)); } catch (e) {}
   }
+  updateWakeUI();
+  if (wakeOn()) acquireWake();
   refreshAll();
   startAutoRefresh();
   registerServiceWorker().then(() => updatePushStatusUI());
@@ -2519,8 +2612,230 @@ async function togglePush() {
   }
 }
 
+// ── TEMA CLARO / OSCURO ──
+const mqlDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function themePref() { return localStorage.getItem('ln_theme') || 'claro'; }
+
+function applyTheme() {
+  const p = themePref();
+  const dark = p === 'oscuro' || (p === 'auto' && mqlDark.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+
+mqlDark.addEventListener('change', () => { if (themePref() === 'auto') applyTheme(); });
+
+function updateThemeUI() {
+  for (const c of document.querySelectorAll('#theme-row .fchip'))
+    c.classList.toggle('active', c.dataset.value === themePref());
+}
+
+document.getElementById('theme-row').addEventListener('click', e => {
+  const btn = e.target.closest('.fchip');
+  if (!btn) return;
+  localStorage.setItem('ln_theme', btn.dataset.value);
+  applyTheme();
+  updateThemeUI();
+});
+
+// ── PANTALLA SIEMPRE ENCENDIDA (Wake Lock) ──
+let wakeLock = null;
+
+function wakeOn() { return localStorage.getItem('ln_wake') === '1'; }
+
+async function acquireWake() {
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    return true;
+  } catch (e) { return false; }
+}
+
+async function toggleWake() {
+  const res = document.getElementById('wake-result');
+  if (!('wakeLock' in navigator)) {
+    res.textContent = 'No disponible en este navegador';
+    res.className = 'test-result fail';
+    return;
+  }
+  if (wakeOn()) {
+    localStorage.setItem('ln_wake', '0');
+    try { await wakeLock?.release(); } catch (e) {}
+    wakeLock = null;
+  } else {
+    localStorage.setItem('ln_wake', '1');
+    if (!(await acquireWake())) {
+      localStorage.setItem('ln_wake', '0');
+      res.textContent = '✖ No se pudo activar';
+      res.className = 'test-result fail';
+    }
+  }
+  updateWakeUI();
+}
+
+function updateWakeUI() {
+  document.getElementById('btn-wake').textContent =
+    wakeOn() ? 'Dejar de mantener la pantalla encendida' : 'Mantener pantalla encendida';
+  const res = document.getElementById('wake-result');
+  if (wakeOn()) { res.textContent = '✔ La pantalla no se apagará con la app abierta'; res.className = 'test-result ok'; }
+  else if (!res.classList.contains('fail')) { res.textContent = ''; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && wakeOn()) acquireWake();
+});
+
+// ── INSTALAR COMO APP ──
+let installEvt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installEvt = e;
+  const b = document.getElementById('btn-install');
+  if (b) b.style.display = '';
+});
+
+async function installApp() {
+  if (!installEvt) return;
+  installEvt.prompt();
+  await installEvt.userChoice.catch(() => {});
+  installEvt = null;
+  document.getElementById('btn-install').style.display = 'none';
+}
+
+// ── COMPARTIR RESUMEN DEL TURNO ──
+async function compartirResumen() {
+  const k = lastKpi;
+  if (!k) return;
+  const p = k.plan || {};
+  const text = [
+    'LOGISNEXT · ' + (k.machine_id || '') + (k.shift_label ? ' · Turno ' + k.shift_label : ''),
+    'OEE ' + fmtPct(k.oee) + ' — Disp. ' + fmtPct(k.availability) +
+      ' · Rend. ' + fmtPct(k.performance) + ' · Cal. ' + fmtPct(k.quality),
+    'Plan: ' + (p.completadas ?? '—') + '/' + (p.planificadas ?? '—') +
+      ' · ' + (p.ok ?? '—') + ' OK · ' + (p.nok ?? '—') + ' NOK',
+    'Alertas activas: ' + ((k.alerts || []).length),
+    new Date().toLocaleString('es-ES'),
+  ].join('\n');
+  try {
+    if (navigator.share) await navigator.share({ title: 'Resumen del turno', text });
+    else { await navigator.clipboard.writeText(text); alert('Resumen copiado al portapapeles'); }
+  } catch (e) { /* compartir cancelado */ }
+}
+
+// ── BUSCADOR EN EL REGISTRO DE ALARMAS ──
+let lastAlarms = [];
+
+function filtrarAlarmas() {
+  const q = (document.getElementById('alarm-search').value || '').trim().toLowerCase();
+  if (!q) return lastAlarms;
+  return lastAlarms.filter(a =>
+    String(a.descripcion ?? '').toLowerCase().includes(q) ||
+    String(a.id ?? '').includes(q) ||
+    String(a.tipo ?? '').toLowerCase().includes(q));
+}
+
+document.getElementById('alarm-search').addEventListener('input', () => renderAlarms(filtrarAlarmas()));
+
+// ── GLOBO DE ALERTAS EN EL ICONO (App Badging) ──
+let kpiBadgeN = 0, mantBadgeN = 0;
+
+function updateAppBadge() {
+  try {
+    if (!('setAppBadge' in navigator)) return;
+    const t = kpiBadgeN + mantBadgeN;
+    if (t) navigator.setAppBadge(t); else navigator.clearAppBadge();
+  } catch (e) {}
+}
+
+// ── CERRAR LA FICHA DESLIZANDO HACIA ABAJO ──
+(function () {
+  const el = document.getElementById('sheet');
+  let y0 = null;
+  el.addEventListener('touchstart', e => { y0 = el.scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (y0 !== null && e.touches[0].clientY - y0 > 70) { y0 = null; closeSheet(); }
+  }, { passive: true });
+})();
+
+// ── DESLIZA PARA REFRESCAR ──
+(function () {
+  const main = document.querySelector('main');
+  const ptr = document.getElementById('ptr');
+  let y0 = null, pulling = false;
+  main.addEventListener('touchstart', e => {
+    y0 = (main.scrollTop <= 0 && getSession()) ? e.touches[0].clientY : null;
+    pulling = false;
+  }, { passive: true });
+  main.addEventListener('touchmove', e => {
+    if (y0 === null) return;
+    const d = e.touches[0].clientY - y0;
+    if (d > 8 && main.scrollTop <= 0) {
+      pulling = true;
+      ptr.classList.add('pull');
+      ptr.style.opacity = Math.min(d / 70, 1);
+      ptr.style.transform = 'translateY(' + (Math.min(d / 2, 52) - 14) + 'px) rotate(' + d * 2 + 'deg)';
+    }
+  }, { passive: true });
+  main.addEventListener('touchend', async e => {
+    if (!pulling) { y0 = null; return; }
+    const d = e.changedTouches[0].clientY - y0;
+    ptr.classList.remove('pull');
+    if (d > 70) {
+      ptr.classList.add('go');
+      ptr.style.opacity = 1;
+      ptr.style.transform = 'translateY(38px)';
+      await refreshAll();
+      ptr.classList.remove('go');
+    }
+    ptr.style.opacity = 0;
+    ptr.style.transform = 'translateY(-14px)';
+    y0 = null;
+    pulling = false;
+  }, { passive: true });
+})();
+
+// ── EVOLUCIÓN DEL OEE (al tocar el gauge) ──
+function openOeeSheet() {
+  const h = loadHist();
+  if (h.length < 2) {
+    openSheet('<div class="sh-head"><span class="sh-title">Evolución del OEE</span></div>' +
+      '<div class="sh-desc">Aún no hay histórico suficiente en este dispositivo. Se irá guardando solo (hasta 12 h).</div>');
+    return;
+  }
+  const vs = h.map(p => p.v);
+  const avg = vs.reduce((a, b) => a + b, 0) / vs.length;
+  const W = 320, H = 120, pad = 8;
+  let min = Math.min(...vs), max = Math.max(...vs);
+  if (max - min < 4) { const m = (max + min) / 2; min = m - 2; max = m + 2; }
+  const x = i => pad + (W - 2 * pad) * i / (h.length - 1);
+  const y = v => H - pad - (H - 2 * pad) * (v - min) / (max - min);
+  const line = h.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
+  const hora = t => new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  openSheet(`
+    <div class="sh-head">
+      <span class="sh-title">Evolución del OEE</span>
+      <span class="ac-meta">${hora(h[0].t)} → ${hora(h[h.length - 1].t)}</span>
+    </div>
+    <div class="sh-desc">Histórico guardado en este dispositivo (${h.length} muestras, hasta 12 h).</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:140px;margin-top:8px" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${line}L${x(h.length - 1).toFixed(1)} ${H}L${x(0)} ${H}Z" fill="var(--brand-soft)"/>
+      <line x1="${pad}" x2="${W - pad}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}"
+        stroke="var(--label)" stroke-dasharray="4 4" stroke-width="1"/>
+      <path d="${line}" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${x(h.length - 1).toFixed(1)}" cy="${y(vs[vs.length - 1]).toFixed(1)}" r="4" fill="var(--brand)"/>
+    </svg>
+    <div class="sh-grid">
+      <div class="chip"><div class="c-num">${vs[vs.length - 1].toFixed(1)}</div><div class="c-lbl">Actual %</div></div>
+      <div class="chip"><div class="c-num">${avg.toFixed(1)}</div><div class="c-lbl">Media %</div></div>
+      <div class="chip ok"><div class="c-num">${Math.max(...vs).toFixed(1)}</div><div class="c-lbl">Máx %</div></div>
+      <div class="chip nok"><div class="c-num">${Math.min(...vs).toFixed(1)}</div><div class="c-lbl">Mín %</div></div>
+    </div>`);
+}
+
 // Init
 (function () {
+  applyTheme();
+  updateThemeUI();
   const c = cfg();
   // Corrige instalaciones antiguas que se autoconfiguraron con el propio
   // origen de la app (Vercel), que nunca es el backend real.
