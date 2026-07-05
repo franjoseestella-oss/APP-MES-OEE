@@ -616,6 +616,40 @@
     animation: blink 1.8s ease infinite;
   }
   .scan-cancel { max-width: 220px; }
+  .scan-viewport { position: relative; width: 100%; max-width: 480px; }
+  .scan-viewport video { display: block; }
+  .scan-corners {
+    position: absolute;
+    inset: 5%;
+    pointer-events: none;
+    opacity: 0.9;
+    background:
+      linear-gradient(#fff,#fff) left 0 top 0 / 24px 3px,
+      linear-gradient(#fff,#fff) left 0 top 0 / 3px 24px,
+      linear-gradient(#fff,#fff) right 0 top 0 / 24px 3px,
+      linear-gradient(#fff,#fff) right 0 top 0 / 3px 24px,
+      linear-gradient(#fff,#fff) left 0 bottom 0 / 24px 3px,
+      linear-gradient(#fff,#fff) left 0 bottom 0 / 3px 24px,
+      linear-gradient(#fff,#fff) right 0 bottom 0 / 24px 3px,
+      linear-gradient(#fff,#fff) right 0 bottom 0 / 3px 24px;
+    background-repeat: no-repeat;
+  }
+  .scan-line {
+    position: absolute;
+    left: 7%;
+    right: 7%;
+    top: 10%;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,64,64,0.95), transparent);
+    box-shadow: 0 0 14px rgba(255,50,50,0.8);
+    animation: scanline 2.2s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes scanline {
+    from { top: 9%; }
+    to   { top: 89%; }
+  }
   .scan-manual { display: flex; gap: 8px; width: 100%; max-width: 420px; }
   .scan-manual input {
     flex: 1;
@@ -1229,7 +1263,9 @@
       <div class="filter-row" id="cal-fecha-row">
         <button class="fchip active" data-f="hoy">Hoy</button>
         <button class="fchip" data-f="ayer">Ayer</button>
-        <input type="date" id="cal-fecha" class="cal-date" aria-label="Elegir fecha">
+        <input type="date" id="cal-fecha1" class="cal-date" aria-label="Desde" title="Desde">
+        <span style="align-self:center;color:var(--label);font-size:12px">→</span>
+        <input type="date" id="cal-fecha2" class="cal-date" aria-label="Hasta" title="Hasta">
       </div>
       <div class="filter-row" id="filter-calidad">
         <button class="fchip active" data-value="">Todas</button>
@@ -1363,7 +1399,11 @@
 </main>
 
 <div class="scan-modal" id="scan-modal">
-  <video id="scan-video" autoplay playsinline muted></video>
+  <div class="scan-viewport">
+    <video id="scan-video" autoplay playsinline muted></video>
+    <div class="scan-corners"></div>
+    <div class="scan-line"></div>
+  </div>
   <div class="scan-hint">Apunta al código de barras o QR…</div>
   <div class="scan-manual">
     <input type="text" id="scan-code2" placeholder="…o escribe el código aquí" autocapitalize="characters" autocomplete="off">
@@ -2012,38 +2052,56 @@ function stopScan() {
 
 // ── CALIDAD: LISTADO OK / NOK (con filtro de fecha) ──
 let filterCalidad = '';
-let calFecha = null;      // null = hoy (datos en vivo del resumen)
+let calRango = null;      // null = hoy (datos en vivo) | {desde, hasta} YYYYMMDD
 let calSeqsFecha = null;
+
+function ymd(d) {
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+function marcarFechaActiva(activo) {
+  for (const c of document.querySelectorAll('#cal-fecha-row .fchip')) c.classList.remove('active');
+  for (const i of ['cal-fecha1', 'cal-fecha2']) document.getElementById(i).classList.remove('active');
+  if (activo === 'rango') {
+    document.getElementById('cal-fecha1').classList.add('active');
+    document.getElementById('cal-fecha2').classList.add('active');
+  } else if (activo) {
+    activo.classList.add('active');
+  }
+}
 
 document.getElementById('cal-fecha-row').addEventListener('click', e => {
   const btn = e.target.closest('.fchip');
   if (!btn) return;
-  for (const c of document.querySelectorAll('#cal-fecha-row .fchip')) c.classList.remove('active');
-  document.getElementById('cal-fecha').classList.remove('active');
-  btn.classList.add('active');
+  marcarFechaActiva(btn);
   if (btn.dataset.f === 'hoy') {
-    calFecha = null;
+    calRango = null;
     calSeqsFecha = null;
     renderCalidad();
   } else {
-    const d = new Date(Date.now() - 86400e3);
-    calFecha = d.toISOString().slice(0, 10).replace(/-/g, '');
+    const f = ymd(new Date(Date.now() - 86400e3));
+    calRango = { desde: f, hasta: f };
     cargarSecuenciasFecha();
   }
 });
 
-document.getElementById('cal-fecha').addEventListener('change', e => {
-  if (!e.target.value) return;
-  for (const c of document.querySelectorAll('#cal-fecha-row .fchip')) c.classList.remove('active');
-  e.target.classList.add('active');
-  calFecha = e.target.value.replace(/-/g, '');
+function onRangoChange() {
+  const v1 = document.getElementById('cal-fecha1').value.replace(/-/g, '');
+  const v2 = document.getElementById('cal-fecha2').value.replace(/-/g, '');
+  if (!v1 && !v2) return;
+  let desde = v1 || v2, hasta = v2 || v1;
+  if (desde > hasta) [desde, hasta] = [hasta, desde];
+  marcarFechaActiva('rango');
+  calRango = { desde, hasta };
   cargarSecuenciasFecha();
-});
+}
+document.getElementById('cal-fecha1').addEventListener('change', onRangoChange);
+document.getElementById('cal-fecha2').addEventListener('change', onRangoChange);
 
 async function cargarSecuenciasFecha() {
   document.getElementById('cal-list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try {
-    const data = await api('/sequences', { fecha: calFecha });
+    const data = await api('/sequences', { desde: calRango.desde, hasta: calRango.hasta });
     calSeqsFecha = Array.isArray(data.secuencias) ? data.secuencias : [];
   } catch (e) {
     calSeqsFecha = [];
@@ -2067,8 +2125,10 @@ document.getElementById('filter-calidad').addEventListener('click', e => {
 function renderCalidad() {
   const cont = document.getElementById('cal-list');
   const title = document.getElementById('cal-sec-title');
-  const fuente = calFecha ? calSeqsFecha : lastSeqs;
-  const etiqueta = calFecha ? fechaBonita(calFecha) : 'hoy';
+  const fuente = calRango ? calSeqsFecha : lastSeqs;
+  const etiqueta = !calRango ? 'hoy'
+    : calRango.desde === calRango.hasta ? fechaBonita(calRango.desde)
+    : fechaBonita(calRango.desde) + ' → ' + fechaBonita(calRango.hasta);
   if (!Array.isArray(fuente)) {
     title.textContent = 'Listado OK / NOK — ' + etiqueta;
     cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
@@ -2088,6 +2148,7 @@ function renderCalidad() {
   cont.innerHTML = rows.map(r => {
     const s = r.s;
     const meta = [];
+    if (calRango && calRango.desde !== calRango.hasta && s.fecha) meta.push(esc(fechaBonita(String(s.fecha)).slice(0, 5)));
     if (s.secuencia ?? null) meta.push('Sec. ' + esc(s.secuencia));
     if (s.operario) meta.push(esc(s.operario));
     return `
@@ -2105,7 +2166,7 @@ function renderCalidad() {
 document.getElementById('cal-list').addEventListener('click', e => {
   const card = e.target.closest('.seq-card');
   if (!card) return;
-  const arr = calFecha ? calSeqsFecha : lastSeqs;
+  const arr = calRango ? calSeqsFecha : lastSeqs;
   const s = arr && arr[+card.dataset.i];
   if (s) openSeqSheet(s);
 });
