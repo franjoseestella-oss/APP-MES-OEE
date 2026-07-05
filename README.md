@@ -40,7 +40,11 @@ ni compilación, con el código de colores Logisnext HMI.
   en planta), instalación como app, notificaciones push y aviso
   sonoro/vibración opcional cuando aparece una alarma activa nueva.
 
-Otras comodidades: desliza hacia abajo para refrescar, toca el gauge de OEE
+Extras: **modo panel de planta (Andon)** a pantalla completa con el OEE
+gigante, reloj y ticker de alarmas para colgar una tablet/TV; **informe del
+turno imprimible/PDF** con KPIs, plan, secuencias y alarmas; **asistente
+MES/OEE** conectado al agente del backend; y comodidades:
+desliza hacia abajo para refrescar, toca el gauge de OEE
 para ver la evolución ampliada con media/mín/máx, comparte el resumen del
 turno por WhatsApp/correo, busca por texto en el registro de alarmas, cierra
 las fichas deslizándolas hacia abajo y, con la app instalada, el icono
