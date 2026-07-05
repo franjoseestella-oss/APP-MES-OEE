@@ -1352,7 +1352,8 @@
     <section>
       <button class="btn" onclick="compartirResumen()">📤 Compartir resumen del turno</button>
       <button class="btn" onclick="informeTurno()" style="margin-top:2px">🖨 Informe del turno (imprimir / PDF)</button>
-      <div class="form-hint" style="text-align:center">Comparte por WhatsApp/correo o genera el informe en PDF para la reunión.</div>
+      <button class="btn" onclick="enviarCorreo()" style="margin-top:2px">📧 Enviar por correo</button>
+      <div class="form-hint" style="text-align:center">Comparte por WhatsApp, abre tu correo con el resumen redactado o genera el informe en PDF.</div>
     </section>
   </div>
 
@@ -3007,7 +3008,7 @@ function informeTurno() {
   const ahora = new Date().toLocaleString('es-ES');
   const estadoTxt = s => ({ done: 'OK', nok: 'NOK', curso: 'En curso', pend: 'Pendiente' })[seqEstado(s)];
   const estadoCls = s => seqEstado(s) === 'nok' ? 'pr-nok' : seqEstado(s) === 'done' ? 'pr-ok' : '';
-  document.getElementById('print-area').innerHTML = `
+  const informeHtml = `
     <h1>Logisnext — Informe del turno</h1>
     <div class="pr-sub">${esc(k.machine_id || '')}${k.shift_label ? ' · Turno ' + esc(k.shift_label) : ''} · generado el ${esc(ahora)}</div>
     <h2>Indicadores</h2>
@@ -3025,11 +3026,52 @@ function informeTurno() {
     ${activas.length ? `<h2>Alarmas de mantenimiento activas</h2>
     <table><tr><th>Nº</th><th>Tipo</th><th>Descripción</th><th>Desde</th></tr>
     ${activas.map(a => `<tr><td>${esc(a.id)}</td><td>${esc(a.tipo)}</td><td>${esc(a.descripcion)}</td><td>${esc(fmtTs(a.fecha_y_hora))}</td></tr>`).join('')}</table>` : ''}`;
-  document.body.classList.add('printing');
-  const fin = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', fin); };
-  window.addEventListener('afterprint', fin);
-  window.print();
-  setTimeout(fin, 3000);
+
+  // El informe se abre como página propia: fiable en móvil y app instalada,
+  // con su botón de imprimir/guardar PDF. Si el navegador bloquea la
+  // ventana emergente, se imprime en la misma página como reserva.
+  const doc = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Informe del turno — Logisnext</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 13px; margin: 24px; }
+      h1 { font-size: 22px; margin: 0 0 2px; }
+      .pr-sub { color: #555; margin-bottom: 16px; }
+      h2 { font-size: 15px; margin: 18px 0 6px; border-bottom: 2px solid #56737F; padding-bottom: 3px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #BBB; padding: 6px 8px; text-align: left; }
+      th { background: #EFF2F3; }
+      .pr-ok { color: #157A42; font-weight: 700; }
+      .pr-nok { color: #B3232E; font-weight: 700; }
+      .no-print {
+        display: block; width: 100%; margin: 0 0 18px; padding: 14px;
+        background: #56737F; color: #fff; border: none; border-radius: 10px;
+        font-size: 15px; font-weight: 700; cursor: pointer;
+      }
+      @media print { .no-print { display: none; } body { margin: 0; } }
+    </style></head><body>
+    <button class="no-print" onclick="window.print()">🖨 Imprimir / Guardar como PDF</button>
+    <a class="no-print" style="background:#40565F;text-align:center;text-decoration:none;box-sizing:border-box"
+       href="mailto:?subject=${encodeURIComponent(asuntoCorreo())}&body=${encodeURIComponent(resumenTexto() || '')}">📧 Enviar resumen por correo</a>
+    ${informeHtml}
+    </body></html>`;
+  let abierto = null;
+  try {
+    abierto = window.open('', '_blank');
+    if (abierto) {
+      abierto.document.write(doc);
+      abierto.document.close();
+    }
+  } catch (e) { abierto = null; }
+  if (!abierto) {
+    // Reserva: imprimir dentro de la propia página
+    document.getElementById('print-area').innerHTML = informeHtml;
+    document.body.classList.add('printing');
+    const fin = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', fin); };
+    window.addEventListener('afterprint', fin);
+    window.print();
+    setTimeout(fin, 3000);
+  }
 }
 
 // ── TEMA CLARO / OSCURO ──
@@ -3123,19 +3165,39 @@ async function installApp() {
 }
 
 // ── COMPARTIR RESUMEN DEL TURNO ──
-async function compartirResumen() {
+function resumenTexto() {
   const k = lastKpi;
-  if (!k) return;
+  if (!k) return null;
   const p = k.plan || {};
-  const text = [
+  const nokSeqs = Array.isArray(lastSeqs) ? lastSeqs.filter(x => seqEstado(x) === 'nok') : [];
+  return [
     'LOGISNEXT · ' + (k.machine_id || '') + (k.shift_label ? ' · Turno ' + k.shift_label : ''),
     'OEE ' + fmtPct(k.oee) + ' — Disp. ' + fmtPct(k.availability) +
       ' · Rend. ' + fmtPct(k.performance) + ' · Cal. ' + fmtPct(k.quality),
     'Plan: ' + (p.completadas ?? '—') + '/' + (p.planificadas ?? '—') +
       ' · ' + (p.ok ?? '—') + ' OK · ' + (p.nok ?? '—') + ' NOK',
+    nokSeqs.length ? 'Bastidores NOK: ' + nokSeqs.map(x => seqBastidor(x)).join(', ') : 'Sin bastidores NOK',
     'Alertas activas: ' + ((k.alerts || []).length),
     new Date().toLocaleString('es-ES'),
   ].join('\n');
+}
+
+function asuntoCorreo() {
+  const k = lastKpi || {};
+  return 'Informe turno ' + (k.machine_id || 'MES') +
+    (k.shift_label ? ' — ' + k.shift_label : '') + ' · ' + new Date().toLocaleDateString('es-ES');
+}
+
+function enviarCorreo() {
+  const text = resumenTexto();
+  if (!text) { showToast('Aún no hay datos del servidor'); return; }
+  location.href = 'mailto:?subject=' + encodeURIComponent(asuntoCorreo()) +
+    '&body=' + encodeURIComponent(text);
+}
+
+async function compartirResumen() {
+  const text = resumenTexto();
+  if (!text) return;
   try {
     if (navigator.share) await navigator.share({ title: 'Resumen del turno', text });
     else { await navigator.clipboard.writeText(text); showToast('Resumen copiado al portapapeles'); }
