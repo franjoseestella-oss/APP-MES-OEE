@@ -947,6 +947,13 @@
       tiempo_real_descenso_s: s.resultado ? (nok ? 11.8 : 9.3) : null,
       desviacion_elevacion_pct: s.resultado ? (nok ? 29.6 : 3.2) : null,
       desviacion_descenso_pct: s.resultado ? (nok ? 31.1 : 3.3) : null,
+      pasos: [
+        { paso: 'Elevación sin carga', medido_s: s.resultado ? 12.1 : null, min_s: 11.0, max_s: 14.0, ok: s.resultado ? true : null },
+        { paso: 'Elevación con carga', medido_s: s.resultado ? (nok ? 16.2 : 12.9) : null, min_s: 11.0, max_s: 14.0, ok: s.resultado ? !nok : null },
+        { paso: 'Descenso sin carga', medido_s: s.resultado ? 8.8 : null, min_s: 8.0, max_s: 10.0, ok: s.resultado ? true : null },
+        { paso: 'Descenso con carga', medido_s: s.resultado ? (nok ? 11.8 : 9.3) : null, min_s: 8.0, max_s: 10.0, ok: s.resultado ? !nok : null },
+      ],
+      operario: s.operario || null,
     };
   }
 
@@ -1008,6 +1015,15 @@
     const u = String((input && input.url) || input);
     if (u.includes('/api/v1/auth/login')) return json({ token: 'demo', apellidos: 'Usuario Demo', codigo: 'DEMO', nivel_usuario: 'ADMIN' });
     if (u.includes('/api/v1/alerts/summary')) return json(summary());
+    if (u.includes('/api/v1/alerts/sequence-result')) {
+      const p = new URL(u, 'http://x').searchParams;
+      const b = (p.get('bastidor') || '').toUpperCase();
+      const r = (p.get('resultado') || '').toUpperCase();
+      const d = DEFS.find(x => x[1].toUpperCase() === b);
+      if (!d) return json({ detail: 'sin registro' }, 404);
+      d[4] = r; // el próximo refresco ya devuelve el resultado forzado
+      return json({ bastidor: b, resultado: r, actualizados: 1 });
+    }
     if (u.includes('/api/v1/alerts/sequence-detail')) {
       const b = new URL(u, 'http://x').searchParams.get('bastidor') || '';
       const d = detalle(b);
