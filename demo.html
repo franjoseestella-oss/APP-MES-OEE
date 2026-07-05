@@ -574,6 +574,39 @@
   .sh-row .r-val { font-variant-numeric: tabular-nums; text-align: right; }
   .motivo-nok .r-val { color: var(--red); font-weight: 700; }
 
+  /* ── ESCÁNER DE CÓDIGO DE BARRAS ── */
+  .scan-modal {
+    position: fixed; inset: 0;
+    z-index: 40;
+    background: #000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+  }
+  .scan-modal.open { display: flex; }
+  .scan-modal video {
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 14px;
+    border: 1px solid var(--border-2);
+    object-fit: cover;
+    background: #05070B;
+  }
+  .scan-hint {
+    color: var(--label);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    animation: blink 1.8s ease infinite;
+  }
+  .scan-cancel { max-width: 220px; }
+  .scan-result-tile { cursor: pointer; margin-top: 12px; animation: fadeUp 0.3s ease both; }
+  .cal-count-ok  { color: var(--green); font-weight: 700; }
+  .cal-count-nok { color: var(--red); font-weight: 700; }
+
   /* ── MIS ALERTAS (umbrales personales) ── */
   .thr-card {
     background: linear-gradient(160deg, var(--card-2), var(--card));
@@ -877,30 +910,44 @@
 
   const t0 = Date.now();
   const wave = (base, amp, period) => base + amp * Math.sin((Date.now() - t0) / period + 1);
-  const MOTIVOS = [[], [{ motivo: 'Rechazo visual en soldadura', cantidad: 1 }],
-    [{ motivo: 'Soldadura porosa', cantidad: 1 }, { motivo: 'Dimensional fuera de tolerancia', cantidad: 1 }]];
+
+  // Pruebas de la jaula: un bastidor = un resultado OK/NOK
+  const DEFS = [
+    ['1', 'B-0415', 'FB25N 1.6t', 'Triplex 4700', 'OK',  'M. Ruiz'],
+    ['2', 'B-0416', 'FB25N 1.6t', 'Triplex 4700', 'NOK', 'M. Ruiz'],
+    ['3', 'B-0417', 'FB30 2.0t',  'Duplex 3300',  'OK',  'A. García'],
+    ['4', 'B-0418', 'FB25 1.5t',  'Triplex 4700', 'OK',  'A. García'],
+    ['5', 'B-0419', 'FB30 2.0t',  'Duplex 3300',  'NOK', 'J. Pérez'],
+    ['6', 'B-0420', 'FB25N 1.6t', 'Triplex 4700', 'OK',  'J. Pérez'],
+  ];
 
   function secuencias() {
-    const paso = Math.floor((Date.now() - t0) / 90000);
-    const defs = [
-      ['SEQ-115', 'Chasis FB25 — lote 39', 30, 0, 'M. Ruiz'],
-      ['SEQ-116', 'Chasis FB25 — lote 40', 30, 2, 'M. Ruiz'],
-      ['SEQ-117', 'Traviesa FB30 — lote 41', 25, 0, 'A. García'],
-      ['SEQ-118', 'Chasis FB25 — lote 42', 30, 1, 'A. García'],
-      ['SEQ-119', 'Chasis FB30 — lote 43', 30, 0, 'J. Pérez'],
-      ['SEQ-120', 'Traviesa FB25 — lote 44', 20, 0, 'J. Pérez'],
-    ];
-    const enCurso = Math.min(3 + paso, defs.length - 1);
-    const horas = ['06:05', '07:25', '08:45', '10:10', '11:30', '12:50'];
-    return defs.map((d, i) => {
-      const [codigo, descripcion, cantidad, nok, operario] = d;
-      const motivos = MOTIVOS[Math.min(nok, 2)];
-      if (i < enCurso) return { codigo, descripcion, cantidad, ok: cantidad - nok, nok, operario,
-        estado: 'completada', hora_inicio: horas[i], hora_fin: horas[i + 1], motivos_nok: motivos };
-      if (i === enCurso) return { codigo, descripcion, cantidad, ok: Math.floor(cantidad / 2), nok, operario,
-        estado: 'en curso', hora_inicio: horas[i], motivos_nok: motivos };
-      return { codigo, descripcion, cantidad, operario, estado: 'pendiente' };
+    // cada 90 s la jaula termina un bastidor más
+    const hechas = Math.min(3 + Math.floor((Date.now() - t0) / 90000), DEFS.length);
+    return DEFS.map((d, i) => {
+      const [secuencia, bastidor, modelo, mastil, resFinal, operario] = d;
+      if (i < hechas) return { id: i + 1, secuencia, bastidor, modelo, mastil, resultado: resFinal, operario };
+      if (i === hechas) return { id: i + 1, secuencia, bastidor, modelo, mastil, resultado: null, en_curso: true };
+      return { id: i + 1, secuencia, bastidor, modelo, mastil, resultado: null };
     });
+  }
+
+  function detalle(bastidor) {
+    const seqs = secuencias();
+    const s = seqs.find(x => x.bastidor.toUpperCase() === bastidor.toUpperCase()
+      || String(x.secuencia) === bastidor);
+    if (!s) return null;
+    const nok = s.resultado === 'NOK';
+    return {
+      id: s.id, secuencia: s.secuencia, bastidor: s.bastidor, modelo: s.modelo,
+      fecha_montaje: new Date().toISOString().slice(0, 10).replace(/-/g, ''),
+      estado: s.resultado || 'PENDIENTE',
+      tiempo_teorico_elevacion_s: 12.5, tiempo_teorico_descenso_s: 9.0,
+      tiempo_real_elevacion_s: s.resultado ? (nok ? 16.2 : 12.9) : null,
+      tiempo_real_descenso_s: s.resultado ? (nok ? 11.8 : 9.3) : null,
+      desviacion_elevacion_pct: s.resultado ? (nok ? 29.6 : 3.2) : null,
+      desviacion_descenso_pct: s.resultado ? (nok ? 31.1 : 3.3) : null,
+    };
   }
 
   function summary() {
@@ -908,24 +955,24 @@
     const av  = wave(84, 5, 53000);
     const pf  = wave(93, 3, 31000);
     const q   = wave(91, 2.5, 67000);
-    const completadas = Math.min(120, 78 + Math.floor((Date.now() - t0) / 15000));
-    const nok = 4;
+    const seqs = secuencias();
+    const ok = seqs.filter(s => s.resultado === 'OK').length;
+    const nok = seqs.filter(s => s.resultado === 'NOK').length;
     const alerts = [];
     if (oee < 75) alerts.push({ type: 'oee_below_target', severity: oee < 69 ? 'critical' : 'warning',
       value: oee.toFixed(1) + ' %', threshold: '75 %', message: 'OEE por debajo del objetivo del turno' });
     if (av < 84) alerts.push({ type: 'low_availability', severity: 'warning',
       value: av.toFixed(1) + ' %', threshold: '84 %', message: 'Disponibilidad baja: paradas no planificadas acumuladas en el turno' });
-    alerts.push({ type: 'deviation_plan', severity: 'warning', value: '-8.3 %', threshold: '±5 %',
+    alerts.push({ type: 'deviation_plan', severity: 'warning', value: '-4.0 %', threshold: '±3 %',
       message: 'Desviación del plan de producción superior al umbral' });
-    const seqs = secuencias();
-    const actual = seqs.find(s => s.estado === 'en curso') || seqs[seqs.length - 1];
+    const actual = seqs.find(s => s.en_curso);
     return { kpi: {
       machine_id: 'JAULA-01', shift_label: 'Mañana',
       oee: +oee.toFixed(1), availability: +av.toFixed(1), performance: +pf.toFixed(1), quality: +q.toFixed(1),
       critical: alerts.filter(a => a.severity === 'critical').length,
       warning: alerts.filter(a => a.severity === 'warning').length,
-      plan: { planificadas: 120, completadas, ok: completadas - nok, nok, desviacion_pct: -8.3 },
-      secuencia_actual: { codigo: actual.codigo, descripcion: actual.descripcion },
+      plan: { planificadas: seqs.length, completadas: ok + nok, ok, nok, desviacion_pct: -4.0 },
+      secuencia_actual: actual ? { codigo: actual.secuencia, descripcion: 'Bastidor ' + actual.bastidor + ' · ' + actual.modelo } : null,
       secuencias: seqs,
       alerts,
     } };
@@ -954,13 +1001,18 @@
     };
   }
 
-  const json = d => Promise.resolve(new Response(JSON.stringify(d), {
-    status: 200, headers: { 'Content-Type': 'application/json' } }));
+  const json = (d, status) => Promise.resolve(new Response(JSON.stringify(d), {
+    status: status || 200, headers: { 'Content-Type': 'application/json' } }));
 
   window.fetch = function (input) {
     const u = String((input && input.url) || input);
     if (u.includes('/api/v1/auth/login')) return json({ token: 'demo', apellidos: 'Usuario Demo', codigo: 'DEMO', nivel_usuario: 'ADMIN' });
     if (u.includes('/api/v1/alerts/summary')) return json(summary());
+    if (u.includes('/api/v1/alerts/sequence-detail')) {
+      const b = new URL(u, 'http://x').searchParams.get('bastidor') || '';
+      const d = detalle(b);
+      return d ? json(d) : json({ detail: 'no encontrado' }, 404);
+    }
     if (u.includes('/api/v1/alerts/maintenance')) return json(maintenance(u));
     return json({});
   };
@@ -982,7 +1034,7 @@
       <input type="password" id="login-password" value="demo" autocomplete="off">
     </div>
     <button class="btn" type="submit" id="login-btn">Entrar</button>
-    <div class="form-hint" style="text-align:center">Modo test: cualquier correo y contraseña valen.</div>
+    <div class="form-hint" style="text-align:center">Modo test: cualquier correo y contraseña valen. Prueba a buscar B-0416 en Calidad.</div>
     <div class="test-result" id="login-result" role="status"></div>
     <button type="button" class="login-cfg-toggle" onclick="toggleLoginCfg()">⚙ Configurar servidor</button>
     <div id="login-cfg">
@@ -1151,6 +1203,35 @@
     </section>
   </div>
 
+  <!-- ════ CALIDAD ════ -->
+  <div class="view" id="view-calidad">
+    <section>
+      <div class="sec-title">Comprobar bastidor</div>
+      <div class="form-group">
+        <label for="scan-code">Código de barras / bastidor / secuencia</label>
+        <input type="text" id="scan-code" placeholder="p. ej. BAST-0421 o SEQ-118" autocapitalize="characters" autocomplete="off">
+      </div>
+      <div class="grid-2">
+        <button class="btn" onclick="doBuscar()">🔍 Buscar</button>
+        <button class="btn" onclick="startScan()">📷 Escanear código</button>
+      </div>
+      <div class="test-result" id="scan-msg" role="status"></div>
+      <div id="scan-result"></div>
+    </section>
+
+    <section>
+      <div class="sec-title" id="cal-sec-title">Listado OK / NOK — hoy</div>
+      <div class="filter-row" id="filter-calidad">
+        <button class="fchip active" data-value="">Todas</button>
+        <button class="fchip" data-value="ok">Solo OK</button>
+        <button class="fchip" data-value="nok">Con NOK</button>
+      </div>
+      <div id="cal-list">
+        <div class="skel"></div><div class="skel"></div>
+      </div>
+    </section>
+  </div>
+
   <!-- ════ MANTENIMIENTO ════ -->
   <div class="view" id="view-mantenimiento">
     <section>
@@ -1233,6 +1314,12 @@
   </div>
 </main>
 
+<div class="scan-modal" id="scan-modal">
+  <video id="scan-video" autoplay playsinline muted></video>
+  <div class="scan-hint">Apunta al código de barras…</div>
+  <button class="btn danger scan-cancel" onclick="stopScan()">Cancelar</button>
+</div>
+
 <div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true">
   <div class="sheet-handle"></div>
@@ -1246,6 +1333,12 @@
     </svg>
     Producción
     <span class="nav-badge zero" id="badge-kpi"></span>
+  </button>
+  <button class="nav-btn" id="nav-calidad" onclick="showView('calidad')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>
+    </svg>
+    Calidad
   </button>
   <button class="nav-btn" id="nav-mantenimiento" onclick="showView('mantenimiento')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1450,15 +1543,26 @@ function renderSpark(h) {
     'mín ' + Math.min(...vs).toFixed(1) + ' % · máx ' + Math.max(...vs).toFixed(1) + ' %';
 }
 
-// ── SECUENCIAS DEL DÍA ──
-const SEQ_STATE_LABEL = { done: '✔ Completada', nok: '⚠ Completada con NOK', curso: '● En curso', pend: 'Pendiente' };
+// ── SECUENCIAS DEL DÍA (pruebas de la jaula por bastidor) ──
+const SEQ_STATE_LABEL = { done: '✔ OK', nok: '⛔ NOK', curso: '● En curso', pend: 'Pendiente' };
 
 function seqEstado(s) {
+  if (s.en_curso) return 'curso';
+  // Resultado de las pruebas de la jaula: OK / NOK / null (pendiente)
+  const r = String(s.resultado ?? s.ok_nok ?? '').trim().toUpperCase();
+  if (r === 'OK') return 'done';
+  if (r === 'NOK') return 'nok';
   const e = String(s.estado ?? '').toLowerCase();
-  if (e.includes('curso') || s.en_curso) return 'curso';
+  if (e === 'ok') return 'done';
+  if (e === 'nok') return 'nok';
+  if (e.includes('curso')) return 'curso';
   const completada = e.includes('complet') || e.includes('cerrad') || e.includes('finaliz') || s.completada;
-  if (completada) return (s.nok > 0 || e.includes('nok')) ? 'nok' : 'done';
+  if (completada) return (s.nok > 0) ? 'nok' : 'done';
   return 'pend';
+}
+
+function seqBastidor(s) {
+  return s.bastidor ?? s.nbastidor ?? s.codigo ?? s.numero ?? s.id;
 }
 
 function fmtHora(v) {
@@ -1473,6 +1577,7 @@ function renderSeqList(kpi, plan) {
   const title = document.getElementById('seq-sec-title');
   const seqs = kpi.secuencias ?? plan.secuencias ?? null;
   lastSeqs = Array.isArray(seqs) ? seqs : null;
+  renderCalidad();
   if (!Array.isArray(seqs)) {
     title.textContent = 'Secuencias de hoy';
     cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
@@ -1486,20 +1591,21 @@ function renderSeqList(kpi, plan) {
   }
   cont.innerHTML = seqs.map((s, i) => {
     const st = seqEstado(s);
+    const desc = s.modelo ?? s.descripcion ?? s.articulo;
+    const meta = [];
+    if (s.secuencia ?? null) meta.push('Sec. ' + esc(s.secuencia));
     const ini = fmtHora(s.hora_inicio ?? s.inicio);
     const fin = fmtHora(s.hora_fin ?? s.fin);
-    const meta = [];
     if (ini || fin) meta.push((ini || '—') + (fin ? ' → ' + fin : ''));
-    if (s.cantidad !== undefined && s.cantidad !== null) meta.push(esc(s.cantidad) + ' uds');
-    if (s.ok !== undefined && s.ok !== null) meta.push(esc(s.ok) + ' OK');
-    if (s.nok) meta.push('<span style="color:var(--red)">' + esc(s.nok) + ' NOK</span>');
+    if (s.mastil) meta.push('Mástil ' + esc(s.mastil));
+    if (s.operario) meta.push(esc(s.operario));
     return `
       <div class="seq-card sq-${st}" data-i="${i}">
         <div class="ac-head">
-          <span class="sq-code">${esc(s.codigo ?? s.numero ?? s.id)}</span>
+          <span class="sq-code">${esc(seqBastidor(s))}</span>
           <span class="sq-state">${SEQ_STATE_LABEL[st]} ›</span>
         </div>
-        ${s.descripcion || s.articulo ? '<div class="ac-msg">' + esc(s.descripcion ?? s.articulo) + '</div>' : ''}
+        ${desc ? '<div class="ac-msg">' + esc(desc) + '</div>' : ''}
         ${meta.length ? '<div class="ac-meta" style="margin-top:4px">' + meta.join(' · ') + '</div>' : ''}
       </div>`;
   }).join('');
@@ -1550,43 +1656,55 @@ function motivosRows(motivos) {
       </div>`).join('');
 }
 
+function fmtSeg(v) {
+  return v === null || v === undefined ? null : (+v).toFixed(1) + ' s';
+}
+
 function openSeqSheet(s) {
   const st = seqEstado(s);
-  const ini = fmtHora(s.hora_inicio ?? s.inicio);
-  const fin = fmtHora(s.hora_fin ?? s.fin);
-  const ok = s.ok ?? null, nok = s.nok ?? 0, cant = s.cantidad ?? null;
-  const hechas = ok !== null ? ok + nok : null;
-  const calidad = hechas ? (ok / hechas) * 100 : null;
-  const dur = fmtDur(minsBetween(s.hora_inicio ?? s.inicio, s.hora_fin ?? s.fin));
+  const resultado = st === 'done' ? 'OK' : st === 'nok' ? 'NOK' : st === 'curso' ? '● …' : '—';
+  const resultadoChip = st === 'done' ? 'ok' : st === 'nok' ? 'nok' : st === 'curso' ? 'cyan' : '';
 
   const rows = [];
+  if (s.modelo ?? s.descripcion) rows.push(['Modelo', s.modelo ?? s.descripcion]);
+  if (s.mastil) rows.push(['Mástil', s.mastil]);
+  if (s.operario) rows.push(['Operario', s.operario]);
+  const fecha = s.fecha_montaje ?? s.fecha_y_hora;
+  if (fecha) rows.push(['Fecha montaje', fmtTs(fecha) !== '—' ? fmtTs(fecha) : String(fecha)]);
+  const ini = fmtHora(s.hora_inicio ?? s.inicio);
+  const fin = fmtHora(s.hora_fin ?? s.fin);
   if (ini) rows.push(['Inicio', ini]);
   if (fin) rows.push(['Fin', fin]);
+  const dur = fmtDur(minsBetween(s.hora_inicio ?? s.inicio, s.hora_fin ?? s.fin));
   if (dur && st !== 'curso') rows.push(['Duración', dur]);
-  if (cant !== null && hechas !== null) rows.push(['Progreso', hechas + ' / ' + cant + ' uds']);
-  if (s.operario) rows.push(['Operario', s.operario]);
-  if (s.maquina) rows.push(['Máquina', s.maquina]);
+
+  // Tiempos de las pruebas de elevación/descenso (medido frente a teórico)
+  const tRows = [];
+  const rElev = fmtSeg(s.tiempo_real_elevacion_s), tElev = fmtSeg(s.tiempo_teorico_elevacion_s);
+  const rDesc = fmtSeg(s.tiempo_real_descenso_s), tDesc = fmtSeg(s.tiempo_teorico_descenso_s);
+  if (rElev || tElev) tRows.push(['Elevación medida / teórica',
+    (rElev ?? '—') + ' / ' + (tElev ?? '—') +
+    (s.desviacion_elevacion_pct != null ? ' (' + (s.desviacion_elevacion_pct > 0 ? '+' : '') + s.desviacion_elevacion_pct + ' %)' : '')]);
+  if (rDesc || tDesc) tRows.push(['Descenso medido / teórico',
+    (rDesc ?? '—') + ' / ' + (tDesc ?? '—') +
+    (s.desviacion_descenso_pct != null ? ' (' + (s.desviacion_descenso_pct > 0 ? '+' : '') + s.desviacion_descenso_pct + ' %)' : '')]);
 
   openSheet(`
     <div class="sq-${st}">
       <div class="sh-head">
-        <span class="sh-title">${esc(s.codigo ?? s.numero ?? s.id)}</span>
+        <span class="sh-title">${esc(seqBastidor(s))}</span>
         <span class="sq-state">${SEQ_STATE_LABEL[st]}</span>
       </div>
-      ${s.descripcion || s.articulo ? '<div class="sh-desc">' + esc(s.descripcion ?? s.articulo) + '</div>' : ''}
-      <div class="sh-grid">
-        <div class="chip cyan"><div class="c-num">${cant ?? '—'}</div><div class="c-lbl">Cantidad</div></div>
-        <div class="chip ok"><div class="c-num">${ok ?? '—'}</div><div class="c-lbl">OK</div></div>
-        <div class="chip nok"><div class="c-num">${nok}</div><div class="c-lbl">NOK</div></div>
-        <div class="chip"><div class="c-num">${calidad === null ? '—' : calidad.toFixed(1) + ' %'}</div><div class="c-lbl">Calidad</div></div>
+      <div class="sh-desc">${st === 'pend' ? 'Pruebas de la jaula aún no realizadas' : 'Resultado de las pruebas de la jaula'}</div>
+      <div class="sh-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="chip ${resultadoChip}"><div class="c-num">${resultado}</div><div class="c-lbl">Resultado pruebas</div></div>
+        <div class="chip cyan"><div class="c-num">${esc(s.secuencia ?? s.nsecuencia ?? '—')}</div><div class="c-lbl">Secuencia</div></div>
       </div>
-      ${hechas ? `<div class="qbar">
-        <div class="qb-ok" style="width:${((ok / hechas) * 100).toFixed(1)}%"></div>
-        ${nok ? `<div class="qb-nok" style="width:${((nok / hechas) * 100).toFixed(1)}%"></div>` : ''}
-      </div>` : ''}
       <div class="sh-rows">
         ${rows.map(r => `<div class="sh-row"><span class="r-lbl">${esc(r[0])}</span><span class="r-val">${esc(r[1])}</span></div>`).join('')}
       </div>
+      ${tRows.length ? '<div class="sec-title" style="margin-top:16px">Tiempos de las pruebas</div>' +
+        tRows.map(r => `<div class="sh-row"><span class="r-lbl">${esc(r[0])}</span><span class="r-val">${esc(r[1])}</span></div>`).join('') : ''}
       ${motivosRows(s.motivos_nok)}
     </div>`);
 }
@@ -1595,34 +1713,211 @@ function showNokSheet() {
   const kpi = lastKpi || {};
   const plan = kpi.plan || {};
   const seqs = Array.isArray(kpi.secuencias ?? plan.secuencias) ? (kpi.secuencias ?? plan.secuencias) : [];
-  const conNok = seqs.filter(s => s.nok > 0);
+  const conNok = seqs.filter(s => seqEstado(s) === 'nok');
   const motivos = [].concat(plan.motivos_nok || [], ...seqs.map(s => s.motivos_nok || []));
 
   openSheet(`
     <div class="sh-head">
-      <span class="sh-title" style="color:var(--red)">${plan.nok ?? '—'} piezas NOK</span>
+      <span class="sh-title" style="color:var(--red)">${plan.nok ?? '—'} bastidores NOK</span>
       <span class="ac-meta">hoy</span>
     </div>
     <div class="sh-desc">
-      NOK son las piezas <b>rechazadas por el control de calidad</b> del MES hoy
-      (no OK). Restan a la Calidad y al OEE del turno.
+      NOK son los bastidores que <b>no superan las pruebas de la jaula</b>
+      (tiempos de elevación/descenso fuera de rango u otros fallos).
+      Restan a la Calidad y al OEE del turno.
     </div>
-    ${conNok.length ? '<div class="sec-title" style="margin-top:14px">Por secuencia</div>' +
+    ${conNok.length ? '<div class="sec-title" style="margin-top:14px">Bastidores con NOK</div>' +
       conNok.map(s => `
         <div class="sh-row motivo-nok">
-          <span class="r-lbl">${esc(s.codigo ?? s.numero ?? s.id)}${s.descripcion ? ' · ' + esc(s.descripcion) : ''}</span>
-          <span class="r-val">${esc(s.nok)} NOK</span>
+          <span class="r-lbl">${esc(seqBastidor(s))}${s.modelo || s.descripcion ? ' · ' + esc(s.modelo ?? s.descripcion) : ''}</span>
+          <span class="r-val">NOK</span>
         </div>`).join('')
       : ''}
     ${motivosRows(motivos)}
     ${!conNok.length && !motivos.length
-      ? '<div class="form-hint" style="margin-top:12px">El servidor aún no envía el desglose por secuencia ni los motivos de rechazo.</div>'
+      ? '<div class="form-hint" style="margin-top:12px">El servidor aún no envía el desglose por bastidor ni los motivos de rechazo.</div>'
       : ''}`);
 }
 
 let lastSeqs = null;
 
 document.getElementById('seq-list').addEventListener('click', e => {
+  const card = e.target.closest('.seq-card');
+  if (!card || !lastSeqs) return;
+  const s = lastSeqs[+card.dataset.i];
+  if (s) openSeqSheet(s);
+});
+
+// ── CALIDAD: BÚSQUEDA / ESCÁNER DE BASTIDOR ──
+let lastScanSeq = null;
+
+function seqMatches(s, code) {
+  return [s.codigo, s.codigo_barras, s.barcode, s.bastidor, s.numero, s.id]
+    .some(v => v !== null && v !== undefined && String(v).trim().toLowerCase() === code);
+}
+
+async function doBuscar(rawCode) {
+  const input = document.getElementById('scan-code');
+  const code = String(rawCode ?? input.value).trim();
+  const msg = document.getElementById('scan-msg');
+  const cont = document.getElementById('scan-result');
+  if (rawCode) input.value = code;
+  msg.textContent = '';
+  msg.className = 'test-result';
+  if (!code) {
+    msg.textContent = '✖ Escribe o escanea un código';
+    msg.className = 'test-result fail';
+    cont.innerHTML = '';
+    return;
+  }
+
+  // 1) Buscar en las secuencias del día ya cargadas
+  let s = Array.isArray(lastSeqs) ? lastSeqs.find(x => seqMatches(x, code.toLowerCase())) : null;
+
+  // 2) Pedir al servidor el detalle de las pruebas (tiempos medidos)
+  msg.textContent = 'Consultando…';
+  try {
+    const detail = await api('/sequence-detail', { bastidor: code });
+    if (detail) {
+      s = Object.assign({}, s || {}, detail, {
+        resultado: ['OK', 'NOK'].includes(String(detail.estado).toUpperCase())
+          ? String(detail.estado).toUpperCase() : (s ? s.resultado : null),
+      });
+    }
+  } catch (e) { /* sin conexión o bastidor sin registro: seguimos con lo local */ }
+  msg.textContent = '';
+
+  lastScanSeq = s || null;
+  const bastidor = s ? seqBastidor(s) : code;
+  const nombre = s ? (s.modelo ?? s.descripcion ?? '') : '';
+
+  if (!s || seqEstado(s) === 'pend') {
+    cont.innerHTML = `
+      <div class="tile st-warning scan-result-tile" ${s ? 'onclick="openSeqSheet(lastScanSeq)"' : ''}>
+        <div class="t-label">${esc(bastidor)}${nombre ? ' · ' + esc(nombre) : ''}</div>
+        <div class="t-value" style="font-size:22px">No realizado</div>
+        <div class="t-status">${s ? '⚠ Planificado, pruebas aún sin hacer' : '⚠ Sin registro hoy para este código'}</div>
+      </div>`;
+    return;
+  }
+
+  const st = seqEstado(s);
+  const tileSt = st === 'nok' ? 'critical' : st === 'curso' ? 'cyan' : 'ok';
+  const estadoTxt = st === 'curso' ? '● En curso ahora mismo'
+    : st === 'nok' ? '⛔ NOK — pruebas falladas' : '✔ OK — pruebas superadas';
+  const tiempos = [];
+  if (s.tiempo_real_elevacion_s != null) tiempos.push('elev. ' + (+s.tiempo_real_elevacion_s).toFixed(1) + ' s');
+  if (s.tiempo_real_descenso_s != null) tiempos.push('desc. ' + (+s.tiempo_real_descenso_s).toFixed(1) + ' s');
+  cont.innerHTML = `
+    <div class="tile st-${tileSt} scan-result-tile" onclick="openSeqSheet(lastScanSeq)">
+      <div class="t-label">${esc(bastidor)}${nombre ? ' · ' + esc(nombre) : ''}</div>
+      <div class="t-value" style="font-size:22px">${estadoTxt}</div>
+      <div class="t-status">${tiempos.length ? esc(tiempos.join(' · ')) + ' — ' : ''}toca para ver el detalle</div>
+    </div>`;
+}
+
+document.getElementById('scan-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doBuscar();
+});
+
+let scanStream = null;
+let scanRAF = null;
+
+async function startScan() {
+  const msg = document.getElementById('scan-msg');
+  if (!('BarcodeDetector' in window)) {
+    msg.textContent = 'Este navegador no soporta escaneo con cámara; escribe el código a mano.';
+    msg.className = 'test-result fail';
+    document.getElementById('scan-code').focus();
+    return;
+  }
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch (e) {
+    msg.textContent = '✖ No se pudo abrir la cámara (revisa el permiso)';
+    msg.className = 'test-result fail';
+    return;
+  }
+  const video = document.getElementById('scan-video');
+  video.srcObject = scanStream;
+  document.getElementById('scan-modal').classList.add('open');
+  const detector = new BarcodeDetector();
+  const loop = async () => {
+    if (!scanStream) return;
+    try {
+      const codes = await detector.detect(video);
+      if (codes.length) {
+        const value = codes[0].rawValue;
+        stopScan();
+        if (navigator.vibrate) navigator.vibrate(60);
+        doBuscar(value);
+        return;
+      }
+    } catch (e) { /* frame aún no listo */ }
+    scanRAF = requestAnimationFrame(loop);
+  };
+  video.onloadedmetadata = () => loop();
+}
+
+function stopScan() {
+  if (scanRAF) cancelAnimationFrame(scanRAF);
+  scanRAF = null;
+  if (scanStream) {
+    scanStream.getTracks().forEach(t => t.stop());
+    scanStream = null;
+  }
+  document.getElementById('scan-modal').classList.remove('open');
+}
+
+// ── CALIDAD: LISTADO OK / NOK ──
+let filterCalidad = '';
+
+document.getElementById('filter-calidad').addEventListener('click', e => {
+  const btn = e.target.closest('.fchip');
+  if (!btn) return;
+  for (const c of e.currentTarget.querySelectorAll('.fchip')) c.classList.remove('active');
+  btn.classList.add('active');
+  filterCalidad = btn.dataset.value;
+  renderCalidad();
+});
+
+function renderCalidad() {
+  const cont = document.getElementById('cal-list');
+  const title = document.getElementById('cal-sec-title');
+  if (!Array.isArray(lastSeqs)) {
+    title.textContent = 'Listado OK / NOK — hoy';
+    cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
+    return;
+  }
+  const todos = lastSeqs.map((s, i) => ({ s, i, st: seqEstado(s) }));
+  const totOk = todos.filter(r => r.st === 'done').length;
+  const totNok = todos.filter(r => r.st === 'nok').length;
+  title.innerHTML = 'Listado OK / NOK — hoy · <span class="cal-count-ok">' + totOk +
+    ' OK</span> · <span class="cal-count-nok">' + totNok + ' NOK</span>';
+  const rows = todos.filter(r =>
+    filterCalidad === 'ok' ? r.st === 'done' : filterCalidad === 'nok' ? r.st === 'nok' : true);
+  if (!rows.length) {
+    cont.innerHTML = '<div class="empty-state">Sin resultados para el filtro seleccionado.</div>';
+    return;
+  }
+  cont.innerHTML = rows.map(r => {
+    const s = r.s;
+    const meta = [];
+    if (s.secuencia ?? null) meta.push('Sec. ' + esc(s.secuencia));
+    if (s.operario) meta.push(esc(s.operario));
+    return `
+      <div class="seq-card sq-${r.st}" data-i="${r.i}">
+        <div class="ac-head">
+          <span class="sq-code">${esc(seqBastidor(s))}</span>
+          <span class="sq-state">${SEQ_STATE_LABEL[r.st]} ›</span>
+        </div>
+        ${s.modelo || s.descripcion ? '<div class="ac-msg">' + esc(s.modelo ?? s.descripcion) + '</div>' : ''}
+        ${meta.length ? '<div class="ac-meta" style="margin-top:4px">' + meta.join(' · ') + '</div>' : ''}
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('cal-list').addEventListener('click', e => {
   const card = e.target.closest('.seq-card');
   if (!card || !lastSeqs) return;
   const s = lastSeqs[+card.dataset.i];
@@ -1871,7 +2166,7 @@ async function refreshAll() {
 }
 
 function showView(name) {
-  for (const v of ['direccion', 'mantenimiento', 'ajustes']) {
+  for (const v of ['direccion', 'calidad', 'mantenimiento', 'ajustes']) {
     document.getElementById('view-' + v).classList.toggle('active', v === name);
     document.getElementById('nav-' + v).classList.toggle('active', v === name);
   }
@@ -1879,10 +2174,11 @@ function showView(name) {
 
 // ── SESIÓN / ROLES ──
 const ROLE_VIEWS = {
-  SUPERADMIN: ['direccion', 'mantenimiento'],
-  ADMIN: ['direccion', 'mantenimiento'],
+  SUPERADMIN: ['direccion', 'calidad', 'mantenimiento'],
+  ADMIN: ['direccion', 'calidad', 'mantenimiento'],
   MANTENIMIENTO: ['mantenimiento'],
-  FABRICACION: ['direccion'],
+  FABRICACION: ['direccion', 'calidad'],
+  CALIDAD: ['calidad'],
 };
 
 function getSession() {
@@ -2003,6 +2299,7 @@ function enterApp(user) {
 
   const views = allowedViews(user.nivel_usuario);
   document.getElementById('nav-direccion').style.display = views.includes('direccion') ? '' : 'none';
+  document.getElementById('nav-calidad').style.display = views.includes('calidad') ? '' : 'none';
   document.getElementById('nav-mantenimiento').style.display = views.includes('mantenimiento') ? '' : 'none';
   document.getElementById('no-access').style.display = views.length ? 'none' : 'block';
 
