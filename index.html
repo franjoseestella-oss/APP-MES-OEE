@@ -616,6 +616,32 @@
     animation: blink 1.8s ease infinite;
   }
   .scan-cancel { max-width: 220px; }
+  .scan-manual { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+  .scan-manual input {
+    flex: 1;
+    min-width: 0;
+    background: #14181D;
+    border: 1px solid #3A444C;
+    color: #FFFFFF;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+  }
+  .scan-manual input:focus { border-color: var(--brand); }
+  .scan-manual .btn { width: auto; margin: 0; padding: 0 18px; }
+  .cal-date {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-family: var(--font);
+    outline: none;
+  }
+  .cal-date.active { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
   .scan-result-tile { cursor: pointer; margin-top: 12px; animation: fadeUp 0.3s ease both; }
   .cal-count-ok  { color: var(--green); font-weight: 700; }
   .cal-count-nok { color: var(--red); font-weight: 700; }
@@ -1187,12 +1213,12 @@
     <section>
       <div class="sec-title">Comprobar bastidor</div>
       <div class="form-group">
-        <label for="scan-code">Código de barras / bastidor / secuencia</label>
+        <label for="scan-code">Código de barras / QR / bastidor / secuencia</label>
         <input type="text" id="scan-code" placeholder="p. ej. BAST-0421 o SEQ-118" autocapitalize="characters" autocomplete="off">
       </div>
       <div class="grid-2">
         <button class="btn" onclick="doBuscar()">🔍 Buscar</button>
-        <button class="btn" onclick="startScan()">📷 Escanear código</button>
+        <button class="btn" onclick="startScan()">📷 Escanear código / QR</button>
       </div>
       <div class="test-result" id="scan-msg" role="status"></div>
       <div id="scan-result"></div>
@@ -1200,6 +1226,11 @@
 
     <section>
       <div class="sec-title" id="cal-sec-title">Listado OK / NOK — hoy</div>
+      <div class="filter-row" id="cal-fecha-row">
+        <button class="fchip active" data-f="hoy">Hoy</button>
+        <button class="fchip" data-f="ayer">Ayer</button>
+        <input type="date" id="cal-fecha" class="cal-date" aria-label="Elegir fecha">
+      </div>
       <div class="filter-row" id="filter-calidad">
         <button class="fchip active" data-value="">Todas</button>
         <button class="fchip" data-value="ok">Solo OK</button>
@@ -1333,7 +1364,11 @@
 
 <div class="scan-modal" id="scan-modal">
   <video id="scan-video" autoplay playsinline muted></video>
-  <div class="scan-hint">Apunta al código de barras…</div>
+  <div class="scan-hint">Apunta al código de barras o QR…</div>
+  <div class="scan-manual">
+    <input type="text" id="scan-code2" placeholder="…o escribe el código aquí" autocapitalize="characters" autocomplete="off">
+    <button class="btn" onclick="buscarDesdeScanner()">Buscar</button>
+  </div>
   <button class="btn danger scan-cancel" onclick="stopScan()">Cancelar</button>
 </div>
 
@@ -1911,7 +1946,7 @@ let scanRAF = null;
 async function startScan() {
   const msg = document.getElementById('scan-msg');
   if (!('BarcodeDetector' in window)) {
-    msg.textContent = 'Este navegador no soporta escaneo con cámara; escribe el código a mano.';
+    msg.textContent = 'Este navegador no soporta el escaneo con cámara; escribe el código a mano.';
     msg.className = 'test-result fail';
     document.getElementById('scan-code').focus();
     return;
@@ -1925,8 +1960,19 @@ async function startScan() {
   }
   const video = document.getElementById('scan-video');
   video.srcObject = scanStream;
+  document.getElementById('scan-code2').value = '';
   document.getElementById('scan-modal').classList.add('open');
-  const detector = new BarcodeDetector();
+  // Códigos de barras 1D y 2D (QR, DataMatrix…): todos los que soporte el móvil
+  let detector;
+  try {
+    const sup = await BarcodeDetector.getSupportedFormats();
+    const want = ['qr_code', 'data_matrix', 'aztec', 'pdf417', 'code_128', 'code_39',
+      'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e'];
+    const formats = want.filter(f => sup.includes(f));
+    detector = new BarcodeDetector(formats.length ? { formats } : undefined);
+  } catch (e) {
+    detector = new BarcodeDetector();
+  }
   const loop = async () => {
     if (!scanStream) return;
     try {
@@ -1944,6 +1990,16 @@ async function startScan() {
   video.onloadedmetadata = () => loop();
 }
 
+function buscarDesdeScanner() {
+  const v = document.getElementById('scan-code2').value.trim();
+  stopScan();
+  if (v) doBuscar(v);
+}
+
+document.getElementById('scan-code2').addEventListener('keydown', e => {
+  if (e.key === 'Enter') buscarDesdeScanner();
+});
+
 function stopScan() {
   if (scanRAF) cancelAnimationFrame(scanRAF);
   scanRAF = null;
@@ -1954,8 +2010,50 @@ function stopScan() {
   document.getElementById('scan-modal').classList.remove('open');
 }
 
-// ── CALIDAD: LISTADO OK / NOK ──
+// ── CALIDAD: LISTADO OK / NOK (con filtro de fecha) ──
 let filterCalidad = '';
+let calFecha = null;      // null = hoy (datos en vivo del resumen)
+let calSeqsFecha = null;
+
+document.getElementById('cal-fecha-row').addEventListener('click', e => {
+  const btn = e.target.closest('.fchip');
+  if (!btn) return;
+  for (const c of document.querySelectorAll('#cal-fecha-row .fchip')) c.classList.remove('active');
+  document.getElementById('cal-fecha').classList.remove('active');
+  btn.classList.add('active');
+  if (btn.dataset.f === 'hoy') {
+    calFecha = null;
+    calSeqsFecha = null;
+    renderCalidad();
+  } else {
+    const d = new Date(Date.now() - 86400e3);
+    calFecha = d.toISOString().slice(0, 10).replace(/-/g, '');
+    cargarSecuenciasFecha();
+  }
+});
+
+document.getElementById('cal-fecha').addEventListener('change', e => {
+  if (!e.target.value) return;
+  for (const c of document.querySelectorAll('#cal-fecha-row .fchip')) c.classList.remove('active');
+  e.target.classList.add('active');
+  calFecha = e.target.value.replace(/-/g, '');
+  cargarSecuenciasFecha();
+});
+
+async function cargarSecuenciasFecha() {
+  document.getElementById('cal-list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  try {
+    const data = await api('/sequences', { fecha: calFecha });
+    calSeqsFecha = Array.isArray(data.secuencias) ? data.secuencias : [];
+  } catch (e) {
+    calSeqsFecha = [];
+  }
+  renderCalidad();
+}
+
+function fechaBonita(f) {
+  return f.slice(6, 8) + '/' + f.slice(4, 6) + '/' + f.slice(0, 4);
+}
 
 document.getElementById('filter-calidad').addEventListener('click', e => {
   const btn = e.target.closest('.fchip');
@@ -1969,15 +2067,17 @@ document.getElementById('filter-calidad').addEventListener('click', e => {
 function renderCalidad() {
   const cont = document.getElementById('cal-list');
   const title = document.getElementById('cal-sec-title');
-  if (!Array.isArray(lastSeqs)) {
-    title.textContent = 'Listado OK / NOK — hoy';
+  const fuente = calFecha ? calSeqsFecha : lastSeqs;
+  const etiqueta = calFecha ? fechaBonita(calFecha) : 'hoy';
+  if (!Array.isArray(fuente)) {
+    title.textContent = 'Listado OK / NOK — ' + etiqueta;
     cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
     return;
   }
-  const todos = lastSeqs.map((s, i) => ({ s, i, st: seqEstado(s) }));
+  const todos = fuente.map((s, i) => ({ s, i, st: seqEstado(s) }));
   const totOk = todos.filter(r => r.st === 'done').length;
   const totNok = todos.filter(r => r.st === 'nok').length;
-  title.innerHTML = 'Listado OK / NOK — hoy · <span class="cal-count-ok">' + totOk +
+  title.innerHTML = 'Listado OK / NOK — ' + etiqueta + ' · <span class="cal-count-ok">' + totOk +
     ' OK</span> · <span class="cal-count-nok">' + totNok + ' NOK</span>';
   const rows = todos.filter(r =>
     filterCalidad === 'ok' ? r.st === 'done' : filterCalidad === 'nok' ? r.st === 'nok' : true);
@@ -2004,8 +2104,9 @@ function renderCalidad() {
 
 document.getElementById('cal-list').addEventListener('click', e => {
   const card = e.target.closest('.seq-card');
-  if (!card || !lastSeqs) return;
-  const s = lastSeqs[+card.dataset.i];
+  if (!card) return;
+  const arr = calFecha ? calSeqsFecha : lastSeqs;
+  const s = arr && arr[+card.dataset.i];
   if (s) openSeqSheet(s);
 });
 
