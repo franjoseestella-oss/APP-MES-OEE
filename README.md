@@ -25,6 +25,13 @@ ni compilación, con el código de colores Logisnext HMI.
   personalizado se evalúa con el límite del usuario en lugar del que marca el
   servidor y genera alertas etiquetadas como «Personal». Se guarda por usuario
   en el dispositivo.
+- **Calidad** 🛡 — comprobación de bastidores: escanea el código de barras con
+  la cámara (o escríbelo a mano) y te dice el resultado de las pruebas de la
+  jaula — ✔ OK / ⛔ NOK con tiempos de elevación/descenso medidos frente a los
+  teóricos, operario y modelo — o «No realizado» si aún no se ha probado.
+  Incluye el listado OK/NOK del día con filtros. Requiere el backend con
+  `kpi.secuencias` y el endpoint `/alerts/sequence-detail` (rama
+  `claude/secuencias-calidad` de `MES-OEE-jaula`, ya en `main`).
 - **Mantenimiento** 🔧 — alarmas y advertencias activas y registro de alarmas
   (`LOG_ALARMAS`) con filtros por estado y tipo, y hora relativa
   («hace 22 min») en cada registro.
