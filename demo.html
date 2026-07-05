@@ -882,6 +882,55 @@
   }
   .nav-badge.zero { display: none; }
 
+  /* ── ASISTENTE (chat) ── */
+  .chat-box { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .msg {
+    max-width: 88%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.55;
+    animation: fadeUp 0.25s ease both;
+    overflow-x: auto;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--brand);
+    color: #FFFFFF;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.bot {
+    align-self: flex-start;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 2px 8px rgba(38,57,66,0.06);
+  }
+  .msg.bot.err { border-color: rgba(214,58,69,0.5); color: var(--red); }
+  .msg.bot p { margin: 0 0 6px; } .msg.bot p:last-child { margin: 0; }
+  .msg.bot ul, .msg.bot ol { margin: 0 0 6px 18px; }
+  .msg.bot table { border-collapse: collapse; font-size: 11px; margin: 6px 0; }
+  .msg.bot th, .msg.bot td { border: 1px solid var(--border); padding: 4px 7px; text-align: left; }
+  .msg.bot code { background: var(--track); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--label); animation: blink 1s ease infinite; }
+  .typing i:nth-child(2) { animation-delay: 0.2s; }
+  .typing i:nth-child(3) { animation-delay: 0.4s; }
+  .chat-inputrow { display: flex; gap: 8px; margin-top: 4px; }
+  .chat-inputrow input {
+    flex: 1;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+  }
+  .chat-inputrow input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .chat-inputrow .btn { width: auto; padding: 0 18px; margin: 0; font-size: 16px; }
+
   /* ── TEMA OSCURO (turno de noche) ── */
   html[data-theme="dark"] {
     --bg:      #10161A;
@@ -1072,8 +1121,56 @@
   const json = (d, status) => Promise.resolve(new Response(JSON.stringify(d), {
     status: status || 200, headers: { 'Content-Type': 'application/json' } }));
 
-  window.fetch = function (input) {
+  function respuestaChat(pregunta) {
+    const q = pregunta.toLowerCase();
+    const k = summary().kpi;
+    const seqs = secuencias();
+    if (q.includes('oee') || q.includes('turno') || q.includes('cómo va') || q.includes('como va')) {
+      return 'El **OEE del turno ' + k.shift_label + '** está en **' + k.oee.toFixed(1) + ' %**.\n\n' +
+        '| KPI | Valor |\n|---|---|\n| Disponibilidad | ' + k.availability.toFixed(1) + ' % |\n| Rendimiento | ' +
+        k.performance.toFixed(1) + ' % |\n| Calidad | ' + k.quality.toFixed(1) + ' % |\n\n' +
+        (k.alerts.length ? 'Hay ' + k.alerts.length + ' alertas activas; la más grave: *' + k.alerts[0].message + '*.' : 'Sin alertas activas.');
+    }
+    if (q.includes('nok')) {
+      const nok = seqs.filter(s => s.resultado === 'NOK');
+      return nok.length
+        ? 'Hoy llevamos **' + nok.length + ' bastidores NOK**:\n\n' + nok.map(s => '- **' + s.bastidor + '** (' + s.modelo + ') — operario ' + s.operario).join('\n') +
+          '\n\nEl motivo típico es el tiempo de elevación con carga fuera de rango. Puedes verlo en la pestaña Calidad.'
+        : 'De momento no hay ningún bastidor NOK hoy. 💪';
+    }
+    if (q.includes('alarma')) {
+      return 'Ahora mismo hay **1 alarma activa** (nº 412: *Fallo variador eje X — sobrecorriente*, hace 22 min) y ' +
+        '**1 advertencia** (nº 411: *Presión de aire baja en línea 2*). El histórico completo está en la pestaña Mantenim.';
+    }
+    if (q.includes('secuencia') || q.includes('quedan') || q.includes('plan')) {
+      const pend = seqs.filter(s => !s.resultado && !s.en_curso);
+      const cur = seqs.find(s => s.en_curso);
+      return 'Del plan de hoy (' + seqs.length + ' bastidores): ' +
+        (cur ? 'en curso **' + cur.bastidor + '** (' + cur.modelo + ')' : 'ninguno en curso') +
+        (pend.length ? ' y quedan pendientes ' + pend.map(s => '**' + s.bastidor + '**').join(', ') + '.' : '. ¡Plan completado!');
+    }
+    return 'Soy el asistente MES/OEE en **modo test**: puedo contarte cómo va el OEE, los NOK, las alarmas o las secuencias del día. Con el servidor real conectado respondo consultando la base de datos del MES.';
+  }
+
+  window.fetch = function (input, init) {
     const u = String((input && input.url) || input);
+    if (u.includes('/api/v1/chat')) {
+      let pregunta = '';
+      try {
+        const body = JSON.parse((init && init.body) || '{}');
+        pregunta = (body.messages || []).filter(m => m.role === 'user').pop()?.content || '';
+      } catch (e) {}
+      const reply = respuestaChat(pregunta);
+      const html = reply
+        .replace(/\|(.+)\|\n\|[-| ]+\|\n([^]*?)(\n\n|$)/g, (mm) => {
+          const filas = mm.trim().split('\n').filter(f => !/^\|[-| ]+\|$/.test(f));
+          return '<table>' + filas.map(f => '<tr>' + f.split('|').slice(1, -1).map(c => '<td>' + c.trim() + '</td>').join('') + '</tr>').join('') + '</table>';
+        })
+        .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>').replace(/\n\n/g, '<br>').replace(/\n/g, ' ');
+      return new Promise(res => setTimeout(() => res(new Response(JSON.stringify({ reply, reply_html: '<p>' + html + '</p>' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } })), 700));
+    }
     if (u.includes('/api/v1/auth/login')) return json({ token: 'demo', apellidos: 'Usuario Demo', codigo: 'DEMO', nivel_usuario: 'ADMIN' });
     if (u.includes('/api/v1/alerts/summary')) return json(summary());
     if (u.includes('/api/v1/alerts/sequence-result')) {
@@ -1356,6 +1453,27 @@
     </section>
   </div>
 
+  <!-- ════ ASISTENTE ════ -->
+  <div class="view" id="view-asistente">
+    <section>
+      <div class="sec-title">Asistente MES/OEE</div>
+      <div class="chat-box" id="chat-list">
+        <div class="msg bot">¡Hola! Soy el asistente de la planta. Pregúntame por el OEE, las alarmas,
+        el plan o las secuencias — consulto los datos reales del MES.</div>
+      </div>
+      <div class="filter-row" id="chat-suggests">
+        <button class="fchip">¿Cómo va el OEE hoy?</button>
+        <button class="fchip">¿Cuántos NOK llevamos?</button>
+        <button class="fchip">Últimas alarmas</button>
+        <button class="fchip">¿Qué secuencias quedan?</button>
+      </div>
+      <div class="chat-inputrow">
+        <input type="text" id="chat-input" placeholder="Pregunta sobre OEE, alarmas, secuencias…" autocomplete="off">
+        <button class="btn" onclick="enviarChat()" aria-label="Enviar">➤</button>
+      </div>
+    </section>
+  </div>
+
   <!-- ════ AJUSTES ════ -->
   <div class="view" id="view-ajustes">
     <section>
@@ -1448,6 +1566,12 @@
     </svg>
     Mantenim.
     <span class="nav-badge zero" id="badge-mant"></span>
+  </button>
+  <button class="nav-btn" id="nav-asistente" onclick="showView('asistente')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    Asistente
   </button>
   <button class="nav-btn" id="nav-ajustes" onclick="showView('ajustes')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2335,7 +2459,7 @@ async function refreshAll() {
 }
 
 function showView(name) {
-  for (const v of ['direccion', 'calidad', 'mantenimiento', 'ajustes']) {
+  for (const v of ['direccion', 'calidad', 'mantenimiento', 'asistente', 'ajustes']) {
     document.getElementById('view-' + v).classList.toggle('active', v === name);
     document.getElementById('nav-' + v).classList.toggle('active', v === name);
   }
@@ -2343,11 +2467,11 @@ function showView(name) {
 
 // ── SESIÓN / ROLES ──
 const ROLE_VIEWS = {
-  SUPERADMIN: ['direccion', 'calidad', 'mantenimiento'],
-  ADMIN: ['direccion', 'calidad', 'mantenimiento'],
-  MANTENIMIENTO: ['mantenimiento'],
-  FABRICACION: ['direccion', 'calidad'],
-  CALIDAD: ['calidad'],
+  SUPERADMIN: ['direccion', 'calidad', 'mantenimiento', 'asistente'],
+  ADMIN: ['direccion', 'calidad', 'mantenimiento', 'asistente'],
+  MANTENIMIENTO: ['mantenimiento', 'asistente'],
+  FABRICACION: ['direccion', 'calidad', 'asistente'],
+  CALIDAD: ['calidad', 'asistente'],
 };
 
 function getSession() {
@@ -2470,6 +2594,7 @@ function enterApp(user) {
   document.getElementById('nav-direccion').style.display = views.includes('direccion') ? '' : 'none';
   document.getElementById('nav-calidad').style.display = views.includes('calidad') ? '' : 'none';
   document.getElementById('nav-mantenimiento').style.display = views.includes('mantenimiento') ? '' : 'none';
+  document.getElementById('nav-asistente').style.display = views.includes('asistente') ? '' : 'none';
   document.getElementById('no-access').style.display = views.length ? 'none' : 'block';
 
   showView(views.length ? views[0] : 'ajustes');
@@ -2611,6 +2736,77 @@ async function togglePush() {
     res.className = 'test-result fail';
   }
 }
+
+// ── ASISTENTE MES/OEE (usa el agente del backend: POST /api/v1/chat) ──
+let chatMsgs = [];
+let chatBusy = false;
+
+// El HTML del asistente viene de nuestro backend, pero se limpia igualmente
+function sanitizeHtml(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  for (const el of tpl.content.querySelectorAll('script, style, iframe, object, embed, link')) el.remove();
+  for (const el of tpl.content.querySelectorAll('*')) {
+    for (const attr of [...el.attributes]) {
+      const n = attr.name.toLowerCase();
+      if (n.startsWith('on') || (n === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:'))) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  }
+  return tpl.innerHTML;
+}
+
+function chatBubble(cls, html) {
+  const list = document.getElementById('chat-list');
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.innerHTML = html;
+  list.appendChild(div);
+  div.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  return div;
+}
+
+async function enviarChat(texto) {
+  if (chatBusy) return;
+  const input = document.getElementById('chat-input');
+  const q = String(texto ?? input.value).trim();
+  if (!q) return;
+  input.value = '';
+  chatMsgs.push({ role: 'user', content: q });
+  chatBubble('user', esc(q));
+  const typing = chatBubble('bot', '<span class="typing"><i></i><i></i><i></i></span>');
+  chatBusy = true;
+  try {
+    const { url, machine } = cfg();
+    const r = await fetch(url + '/api/v1/chat', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ messages: chatMsgs.slice(-16), machine_id: machine }),
+    });
+    if (r.status === 401) { logout(); return; }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || 'HTTP ' + r.status);
+    chatMsgs.push({ role: 'assistant', content: data.reply || '' });
+    typing.innerHTML = sanitizeHtml(data.reply_html || esc(data.reply || '—'));
+    typing.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  } catch (e) {
+    chatMsgs.pop(); // no contar la pregunta fallida en el contexto
+    typing.classList.add('err');
+    typing.textContent = '✖ No se pudo consultar al asistente: ' + e.message;
+  } finally {
+    chatBusy = false;
+  }
+}
+
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') enviarChat();
+});
+
+document.getElementById('chat-suggests').addEventListener('click', e => {
+  const btn = e.target.closest('.fchip');
+  if (btn) enviarChat(btn.textContent.trim());
+});
 
 // ── TEMA CLARO / OSCURO ──
 const mqlDark = window.matchMedia('(prefers-color-scheme: dark)');
