@@ -89,13 +89,17 @@ correo/USB) y en Ajustes poner la IP local del servidor
 (p. ej. `http://192.168.1.50:8000`). Sin HTTPS ni túnel, pero solo funciona
 dentro de la misma WiFi.
 
-## Código de colores LOGISNEXT
+## Identidad corporativa
 
 | Color | Uso |
 |-------|-----|
-| `#34D877` verde | OK / Execute |
+| `#E60012` rojo Mitsubishi | Marca, acciones primarias, navegación activa |
+| `#34D877` verde | Pruebas OK / Execute |
 | `#FFB020` ámbar | Advertencia / espera |
-| `#FF3B4D` rojo | Alarma / crítico |
-| `#2BD9E5` cian | Datos / acento |
-| `#060A10` / `#0D1219` | Fondo / tarjeta |
-| `#8B94A6` gris | Etiquetas |
+| `#FF3B4D` rojo claro | Alarma / crítico (distinto del rojo de marca) |
+| `#2BD9E5` cian | Solo visualización de datos (barra de avance) |
+| `#0B0D10` / `#14171C` | Fondo / tarjeta (carbón neutro) |
+| `#99A1AB` gris | Etiquetas |
+
+Tipografía: **Barlow** (Google Fonts) con reserva de fuentes del sistema.
+El wordmark sigue el logotipo corporativo: LOGiSNEXT con la «i» en rojo.
