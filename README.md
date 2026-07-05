@@ -36,8 +36,15 @@ ni compilación, con el código de colores Logisnext HMI.
   (`LOG_ALARMAS`) con filtros por estado y tipo, y hora relativa
   («hace 22 min») en cada registro.
 - **Ajustes** ⚙️ — URL del servidor MES e ID de máquina (se guardan en el móvil),
-  notificaciones push y aviso sonoro/vibración opcional cuando aparece una
-  alarma activa nueva con la app abierta.
+  tema claro/oscuro/auto, mantener la pantalla encendida (para paneles fijos
+  en planta), instalación como app, notificaciones push y aviso
+  sonoro/vibración opcional cuando aparece una alarma activa nueva.
+
+Otras comodidades: desliza hacia abajo para refrescar, toca el gauge de OEE
+para ver la evolución ampliada con media/mín/máx, comparte el resumen del
+turno por WhatsApp/correo, busca por texto en el registro de alarmas, cierra
+las fichas deslizándolas hacia abajo y, con la app instalada, el icono
+muestra un globo con el número de alertas activas.
 
 Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
 app está en segundo plano; al volver a primer plano o recuperar la red se
