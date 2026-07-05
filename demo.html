@@ -991,6 +991,53 @@
   .chat-inputrow input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
   .chat-inputrow .btn { width: auto; padding: 0 18px; margin: 0; font-size: 16px; }
 
+  /* ── DASHBOARD ── */
+  .dash-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .dash-kpi {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--border-2);
+    border-radius: var(--radius);
+    padding: 10px 8px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(38,57,66,0.06);
+  }
+  .dash-kpi b { display: block; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .dash-kpi span { font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--label); }
+  .dash-kpi.st-ok { border-top-color: var(--green); } .dash-kpi.st-ok b { color: var(--green); }
+  .dash-kpi.st-warning { border-top-color: var(--amber); } .dash-kpi.st-warning b { color: var(--amber); }
+  .dash-kpi.st-critical { border-top-color: var(--red); } .dash-kpi.st-critical b { color: var(--red); }
+  .dash-kpi.st-none b { color: var(--label); }
+  .dash-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: 0 2px 10px rgba(38,57,66,0.07);
+  }
+  .dash-card svg { width: 100%; display: block; }
+  .dash-axis { font-size: 9px; fill: var(--label); font-family: var(--font); }
+  .dash-flex { display: flex; align-items: center; gap: 16px; }
+  .dash-leyenda { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .dash-leyenda .lg {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .dash-leyenda .lg i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .dash-leyenda .lg b { margin-left: auto; }
+  .dash-barras { display: flex; flex-direction: column; gap: 10px; }
+  .dash-barra { display: grid; grid-template-columns: 92px 1fr 30px; align-items: center; gap: 8px; font-size: 11px; }
+  .dash-barra .db-track { height: 12px; border-radius: 6px; background: var(--track); overflow: hidden; }
+  .dash-barra .db-fill { height: 100%; border-radius: 6px; transition: width 0.7s ease; }
+  .dash-barra b { text-align: right; font-variant-numeric: tabular-nums; }
+  .dash-analisis {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .dash-analisis.cargando { color: var(--label); animation: blink 1.4s ease infinite; }
+
   /* ── MODO PANEL (Andon) ── */
   #andon {
     position: fixed; inset: 0;
@@ -1613,6 +1660,47 @@
     </section>
   </div>
 
+  <!-- ════ DASHBOARD ════ -->
+  <div class="view" id="view-dashboard">
+    <section>
+      <div class="sec-title" id="dash-title">Panel del turno</div>
+      <div class="dash-kpis">
+        <div class="dash-kpi st-none" id="dash-oee"><b>—</b><span>OEE</span></div>
+        <div class="dash-kpi st-none" id="dash-av"><b>—</b><span>Disponib.</span></div>
+        <div class="dash-kpi st-none" id="dash-pf"><b>—</b><span>Rendim.</span></div>
+        <div class="dash-kpi st-none" id="dash-q"><b>—</b><span>Calidad</span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Evolución del OEE — sesión</div>
+      <div class="dash-card">
+        <svg id="dash-oee-chart" viewBox="0 0 340 150" preserveAspectRatio="none" aria-label="Evolución del OEE"></svg>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Resultados de hoy</div>
+      <div class="dash-card dash-flex">
+        <svg id="dash-donut" viewBox="0 0 120 120" style="width:120px;flex-shrink:0" aria-label="Resultados OK y NOK"></svg>
+        <div class="dash-leyenda" id="dash-donut-leyenda"></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-title">Alarmas de mantenimiento</div>
+      <div class="dash-card dash-barras" id="dash-alarms"></div>
+    </section>
+
+    <section>
+      <div class="sec-title">Análisis del turno (IA)</div>
+      <div class="dash-card">
+        <div class="dash-analisis" id="dash-analisis">—</div>
+        <button class="btn" style="margin:12px 0 0" onclick="cargarAnalisisDash(true)">↻ Actualizar análisis</button>
+      </div>
+    </section>
+  </div>
+
   <!-- ════ CALIDAD ════ -->
   <div class="view" id="view-calidad">
     <section>
@@ -1830,6 +1918,13 @@
     </svg>
     Producción
     <span class="nav-badge zero" id="badge-kpi"></span>
+  </button>
+  <button class="nav-btn" id="nav-dashboard" onclick="showView('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>
+      <rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>
+    </svg>
+    Panel
   </button>
   <button class="nav-btn" id="nav-calidad" onclick="showView('calidad')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2817,6 +2912,7 @@ async function refreshAll() {
     lastAlarms = maint.alarmas || [];
     renderAlarms(filtrarAlarmas());
     renderAndon();
+    renderDashboard();
     setConnection(true);
   } catch (e) {
     console.error('Error actualizando:', e);
@@ -2828,19 +2924,23 @@ async function refreshAll() {
 }
 
 function showView(name) {
-  for (const v of ['direccion', 'calidad', 'mantenimiento', 'asistente', 'ajustes']) {
+  for (const v of ['direccion', 'dashboard', 'calidad', 'mantenimiento', 'asistente', 'ajustes']) {
     document.getElementById('view-' + v).classList.toggle('active', v === name);
     document.getElementById('nav-' + v).classList.toggle('active', v === name);
+  }
+  if (name === 'dashboard') {
+    renderDashboard();
+    cargarAnalisisDash(false);
   }
 }
 
 // ── SESIÓN / ROLES ──
 const ROLE_VIEWS = {
-  SUPERADMIN: ['direccion', 'calidad', 'mantenimiento', 'asistente'],
-  ADMIN: ['direccion', 'calidad', 'mantenimiento', 'asistente'],
-  MANTENIMIENTO: ['mantenimiento', 'asistente'],
-  FABRICACION: ['direccion', 'calidad', 'asistente'],
-  CALIDAD: ['calidad', 'asistente'],
+  SUPERADMIN: ['direccion', 'dashboard', 'calidad', 'mantenimiento', 'asistente'],
+  ADMIN: ['direccion', 'dashboard', 'calidad', 'mantenimiento', 'asistente'],
+  MANTENIMIENTO: ['mantenimiento', 'dashboard', 'asistente'],
+  FABRICACION: ['direccion', 'dashboard', 'calidad', 'asistente'],
+  CALIDAD: ['calidad', 'dashboard', 'asistente'],
 };
 
 function getSession() {
@@ -2961,6 +3061,7 @@ function enterApp(user) {
 
   const views = allowedViews(user.nivel_usuario);
   document.getElementById('nav-direccion').style.display = views.includes('direccion') ? '' : 'none';
+  document.getElementById('nav-dashboard').style.display = views.includes('dashboard') ? '' : 'none';
   document.getElementById('nav-calidad').style.display = views.includes('calidad') ? '' : 'none';
   document.getElementById('nav-mantenimiento').style.display = views.includes('mantenimiento') ? '' : 'none';
   document.getElementById('nav-asistente').style.display = views.includes('asistente') ? '' : 'none';
@@ -3257,6 +3358,130 @@ function renderAndon() {
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') salirAndon(); });
+
+// ── DASHBOARD ──
+function dashKpi(id, valor, st) {
+  const el = document.getElementById(id);
+  el.className = 'dash-kpi st-' + st;
+  el.querySelector('b').textContent = valor;
+}
+
+function renderDashboard() {
+  const k = lastKpi;
+  if (!k) return;
+  const alerts = k.alerts || [];
+  document.getElementById('dash-title').textContent =
+    'Panel del turno' + (k.shift_label ? ' ' + k.shift_label : '') + ' · ' + (k.machine_id || '');
+  const stOf = (v, types) => v === null || v === undefined ? 'none' : statusFromAlerts(alerts, types);
+  dashKpi('dash-oee', fmtPct(k.oee), stOf(k.oee, ['oee_below_target']));
+  dashKpi('dash-av', fmtPct(k.availability), stOf(k.availability, ['low_availability']));
+  dashKpi('dash-pf', fmtPct(k.performance), stOf(k.performance, ['low_performance']));
+  dashKpi('dash-q', fmtPct(k.quality), stOf(k.quality, ['low_quality']));
+  renderDashOee();
+  renderDashDonut();
+  renderDashAlarms();
+}
+
+function renderDashOee() {
+  const svg = document.getElementById('dash-oee-chart');
+  const h = loadHist();
+  if (h.length < 2) {
+    svg.innerHTML = '<text x="170" y="78" text-anchor="middle" class="dash-axis">Aún sin histórico en este dispositivo</text>';
+    return;
+  }
+  const W = 340, H = 150, L = 34, R = 10, T = 12, B = 22;
+  const vs = h.map(p => p.v);
+  const avg = vs.reduce((a, b) => a + b, 0) / vs.length;
+  let min = Math.min(...vs), max = Math.max(...vs);
+  if (max - min < 4) { const m = (max + min) / 2; min = m - 2; max = m + 2; }
+  const x = i => L + (W - L - R) * i / (h.length - 1);
+  const y = v => H - B - (H - T - B) * (v - min) / (max - min);
+  const linea = h.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
+  const hora = t => new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const ult = vs[vs.length - 1];
+  svg.innerHTML =
+    '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(max).toFixed(1) + '" y2="' + y(max).toFixed(1) + '" stroke="var(--track)" stroke-width="1"/>' +
+    '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(min).toFixed(1) + '" y2="' + y(min).toFixed(1) + '" stroke="var(--track)" stroke-width="1"/>' +
+    '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(avg).toFixed(1) + '" y2="' + y(avg).toFixed(1) + '" stroke="var(--label)" stroke-width="1" stroke-dasharray="4 4"/>' +
+    '<text x="' + (L - 4) + '" y="' + (y(max) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">' + max.toFixed(0) + '</text>' +
+    '<text x="' + (L - 4) + '" y="' + (y(min) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">' + min.toFixed(0) + '</text>' +
+    '<text x="' + (L - 4) + '" y="' + (y(avg) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">x&#772;</text>' +
+    '<path d="' + linea + 'L' + x(h.length - 1).toFixed(1) + ' ' + (H - B) + 'L' + L + ' ' + (H - B) + 'Z" fill="var(--brand-soft)"/>' +
+    '<path d="' + linea + '" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="' + x(h.length - 1).toFixed(1) + '" cy="' + y(ult).toFixed(1) + '" r="4" fill="var(--brand)"/>' +
+    '<text x="' + (x(h.length - 1) - 6).toFixed(1) + '" y="' + (y(ult) - 8).toFixed(1) + '" text-anchor="end" class="dash-axis" font-weight="700">' + ult.toFixed(1) + ' %</text>' +
+    '<text x="' + L + '" y="' + (H - 6) + '" class="dash-axis">' + hora(h[0].t) + '</text>' +
+    '<text x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end" class="dash-axis">' + hora(h[h.length - 1].t) + '</text>';
+}
+
+function renderDashDonut() {
+  const svg = document.getElementById('dash-donut');
+  const ley = document.getElementById('dash-donut-leyenda');
+  const seqs = Array.isArray(lastSeqs) ? lastSeqs : [];
+  const cnt = { done: 0, nok: 0, curso: 0, pend: 0 };
+  for (const q of seqs) cnt[seqEstado(q)]++;
+  const total = seqs.length;
+  const datos = [
+    ['OK', cnt.done, 'var(--green)'],
+    ['NOK', cnt.nok, 'var(--red)'],
+    ['En curso', cnt.curso, 'var(--cyan)'],
+    ['Pendiente', cnt.pend, 'var(--border-2)'],
+  ];
+  if (!total) {
+    svg.innerHTML = '';
+    ley.innerHTML = '<div class="lg">Sin secuencias hoy</div>';
+    return;
+  }
+  const C = 2 * Math.PI * 45;
+  let acumulado = 0;
+  let segs = '';
+  for (const [, n, color] of datos) {
+    if (!n) continue;
+    const len = C * n / total;
+    segs += '<circle cx="60" cy="60" r="45" fill="none" stroke="' + color + '" stroke-width="16" ' +
+      'stroke-dasharray="' + Math.max(len - 2, 0.5).toFixed(1) + ' ' + (C - Math.max(len - 2, 0.5)).toFixed(1) + '" ' +
+      'stroke-dashoffset="' + (-acumulado).toFixed(1) + '" transform="rotate(-90 60 60)"/>';
+    acumulado += len;
+  }
+  svg.innerHTML = segs +
+    '<text x="60" y="58" text-anchor="middle" font-size="22" font-weight="800" fill="var(--text)" font-family="var(--font)">' + total + '</text>' +
+    '<text x="60" y="74" text-anchor="middle" class="dash-axis">bastidores</text>';
+  ley.innerHTML = datos.map(([nombre, n, color]) =>
+    '<div class="lg"><i style="background:' + color + '"></i>' + nombre + '<b>' + n + '</b></div>').join('');
+}
+
+function renderDashAlarms() {
+  const cont = document.getElementById('dash-alarms');
+  const activasA = lastMaint ? (lastMaint.alarmas_activas || 0) : 0;
+  const activasW = lastMaint ? (lastMaint.advertencias_activas || 0) : 0;
+  const cerradas = (lastAlarms || []).filter(a => !a.activa).length;
+  const datos = [
+    ['Alarmas activas', activasA, 'var(--red)'],
+    ['Advert. activas', activasW, 'var(--amber)'],
+    ['Cerradas (últ.)', cerradas, 'var(--border-2)'],
+  ];
+  const maxV = Math.max(1, ...datos.map(d => d[1]));
+  cont.innerHTML = datos.map(([nombre, n, color]) => `
+    <div class="dash-barra">
+      <span>${nombre}</span>
+      <div class="db-track"><div class="db-fill" style="width:${(n / maxV * 100).toFixed(0)}%;background:${color}"></div></div>
+      <b>${n}</b>
+    </div>`).join('');
+}
+
+let dashAnalisisTs = 0;
+
+async function cargarAnalisisDash(forzar) {
+  const el = document.getElementById('dash-analisis');
+  if (!lastKpi) { el.textContent = 'Aún no hay datos del servidor.'; return; }
+  if (!forzar && Date.now() - dashAnalisisTs < 120000 && el.textContent.length > 20) return;
+  el.classList.add('cargando');
+  el.textContent = 'Analizando el turno…';
+  const texto = await analisisIA();
+  el.classList.remove('cargando');
+  el.textContent = texto;
+  dashAnalisisTs = Date.now();
+}
 
 // ── ANÁLISIS DEL TURNO (IA con reserva local) ──
 function analisisLocal() {
