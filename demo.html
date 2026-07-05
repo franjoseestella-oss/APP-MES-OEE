@@ -1298,6 +1298,20 @@
     const q = pregunta.toLowerCase();
     const k = summary().kpi;
     const seqs = secuencias();
+    if (q.includes('redacta un análisis') || q.includes('redacta un analisis')) {
+      const noks = seqs.filter(s => s.resultado === 'NOK');
+      const peor = [['la disponibilidad', k.availability], ['el rendimiento', k.performance], ['la calidad', k.quality]]
+        .reduce((a, b) => (b[1] < a[1] ? b : a));
+      return 'El turno ' + k.shift_label + ' cierra por ahora con un OEE del ' + k.oee.toFixed(1) +
+        ' %, condicionado sobre todo por ' + peor[0] + ' (' + peor[1].toFixed(1) + ' %), su componente más bajo. ' +
+        'La alarma activa del variador del eje X y la presión de aire baja de la línea 2 explican buena parte de la pérdida de disponibilidad; se recomienda cerrarlas antes del próximo lote. ' +
+        (noks.length
+          ? 'En calidad hay ' + noks.length + ' bastidor(es) NOK (' + noks.map(s => s.bastidor).join(', ') + '), con la elevación con carga fuera de rango: conviene revisar el reglaje hidráulico y repetir la prueba. '
+          : 'Sin bastidores NOK por el momento, buen trabajo de calidad. ') +
+        'El plan avanza a buen ritmo (' + (k.plan.completadas) + '/' + k.plan.planificadas +
+        ') y, de mantener la cadencia, se completará dentro del turno. Vigilar la desviación del plan (' +
+        k.plan.desviacion_pct + ' %) y el OEE tras el cierre de las alarmas.';
+    }
     if (q.includes('oee') || q.includes('turno') || q.includes('cómo va') || q.includes('como va')) {
       return 'El **OEE del turno ' + k.shift_label + '** está en **' + k.oee.toFixed(1) + ' %**.\n\n' +
         '| KPI | Valor |\n|---|---|\n| Disponibilidad | ' + k.availability.toFixed(1) + ' % |\n| Rendimiento | ' +
@@ -3244,10 +3258,207 @@ function renderAndon() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') salirAndon(); });
 
+// ── ANÁLISIS DEL TURNO (IA con reserva local) ──
+function analisisLocal() {
+  const k = lastKpi || {};
+  const p = k.plan || {};
+  const fr = [];
+  if (k.oee != null) {
+    if (k.oee < 70) fr.push('El OEE del turno (' + fmtPct(k.oee) + ') está en zona crítica, claramente por debajo del objetivo del 75 %.');
+    else if (k.oee < 80) fr.push('El OEE del turno (' + fmtPct(k.oee) + ') se queda algo corto del objetivo; hay margen de mejora.');
+    else fr.push('El OEE del turno (' + fmtPct(k.oee) + ') es bueno y se mantiene por encima del objetivo.');
+  }
+  const kpis = [['la disponibilidad', k.availability], ['el rendimiento', k.performance], ['la calidad', k.quality]]
+    .filter(x => x[1] != null);
+  if (kpis.length) {
+    const peor = kpis.reduce((a, b) => (b[1] < a[1] ? b : a));
+    fr.push('La palanca principal de mejora es ' + peor[0] + ' (' + fmtPct(peor[1]) + '), el componente más bajo del OEE.');
+  }
+  const h = loadHist();
+  if (h.length >= 5) {
+    const d = h[h.length - 1].v - h[0].v;
+    if (Math.abs(d) >= 1.5) fr.push('La tendencia de la sesión es ' + (d > 0 ? 'al alza (+' : 'a la baja (') + d.toFixed(1) + ' puntos de OEE).');
+  }
+  if (p.planificadas) {
+    const done = p.completadas || 0;
+    fr.push('Del plan se han completado ' + done + ' de ' + p.planificadas + ' bastidores (' + Math.round(done / p.planificadas * 100) + ' %).');
+  }
+  const noks = Array.isArray(lastSeqs) ? lastSeqs.filter(x => seqEstado(x) === 'nok') : [];
+  if (noks.length) fr.push('Atención a los bastidores NOK (' + noks.map(x => seqBastidor(x)).join(', ') +
+    '): conviene revisar los tiempos de elevación/descenso con carga y repetir la prueba tras el ajuste.');
+  else if (p.planificadas) fr.push('Sin bastidores NOK por el momento: buen trabajo de calidad del turno.');
+  const n = lastMaint ? (lastMaint.total_activas || 0) : 0;
+  if (n) fr.push('Hay ' + n + ' aviso(s) de mantenimiento activo(s) que pueden estar penalizando la disponibilidad; priorizar su cierre.');
+  return fr.join(' ') || 'Sin datos suficientes para el análisis.';
+}
+
+async function analisisIA() {
+  const k = lastKpi || {};
+  const p = k.plan || {};
+  const noks = Array.isArray(lastSeqs) ? lastSeqs.filter(x => seqEstado(x) === 'nok').map(x => seqBastidor(x)) : [];
+  const prompt = 'Redacta un análisis breve del turno para el informe (5-7 frases, tono profesional de planta), ' +
+    'con causas probables y recomendaciones concretas. Datos: OEE ' + fmtPct(k.oee) +
+    ', disponibilidad ' + fmtPct(k.availability) + ', rendimiento ' + fmtPct(k.performance) +
+    ', calidad ' + fmtPct(k.quality) + '. Plan ' + (p.completadas ?? 0) + '/' + (p.planificadas ?? 0) +
+    ' bastidores, NOK: ' + (noks.length ? noks.join(', ') : 'ninguno') +
+    '. Avisos de mantenimiento activos: ' + (lastMaint ? lastMaint.total_activas || 0 : 0) + '.';
+  const remoto = (async () => {
+    const { url, machine } = cfg();
+    const r = await fetch(url + '/api/v1/chat', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], machine_id: machine }),
+    });
+    if (!r.ok) throw new Error('chat no disponible');
+    const d = await r.json();
+    const t = (d.reply || '').trim();
+    if (!t) throw new Error('respuesta vacía');
+    return t;
+  })();
+  try {
+    return await Promise.race([remoto, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 6000))]);
+  } catch (e) {
+    return analisisLocal();
+  }
+}
+
+// ── GENERADOR DE PDF (sin librerías: PDF 1.4 con Helvetica/WinAnsi) ──
+function generarPdf(analisis) {
+  const W = 595, H = 842, M = 40;
+  const k = lastKpi || {};
+  const p = k.plan || {};
+  const SLATE = '0.34 0.45 0.5', NEGRO = '0 0 0', GRIS = '0.4 0.4 0.4';
+  const VERDE = '0.08 0.48 0.26', ROJO = '0.7 0.14 0.18';
+
+  const limpiar = t => String(t ?? '')
+    .replace(/—/g, '-').replace(/→/g, '->').replace(/·/g, String.fromCharCode(183))
+    .replace(/[✔✖⚠⛔●▶🖨📧📤]/g, '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+    .replace(/[^\x00-\xFF]/g, '-').trim();
+
+  const paginas = [];
+  let cur = [];
+  let y = H - 56;
+  const nuevaPagina = () => { paginas.push(cur); cur = []; y = H - 56; };
+  const linea = (t, o = {}) => {
+    if (y < 56) nuevaPagina();
+    cur.push({ t: limpiar(t), f: o.b ? 'F2' : 'F1', s: o.s || 10, x: o.x ?? M, y, rgb: o.rgb || NEGRO });
+    if (!o.mismaLinea) y -= (o.adv || (o.s || 10) + 5);
+  };
+  const cols = (items, adv) => {
+    if (y < 56) nuevaPagina();
+    for (const it of items) cur.push({ t: limpiar(it.t), f: it.b ? 'F2' : 'F1', s: it.s || 9.5, x: it.x, y, rgb: it.rgb || NEGRO });
+    y -= adv || 15;
+  };
+  const parrafo = (t, o = {}) => {
+    const max = o.max || 100;
+    const palabras = limpiar(t).split(/\s+/);
+    let fila = '';
+    for (const w of palabras) {
+      if ((fila + ' ' + w).trim().length > max) { linea(fila.trim(), o); fila = w; }
+      else fila += ' ' + w;
+    }
+    if (fila.trim()) linea(fila.trim(), o);
+  };
+  const titulo = t => { y -= 10; linea(t, { b: true, s: 12, rgb: SLATE, adv: 18 }); };
+
+  linea('Logisnext - Informe del turno', { b: true, s: 19, adv: 22 });
+  linea((k.machine_id || '') + (k.shift_label ? ' - Turno ' + k.shift_label : '') +
+    ' - generado el ' + new Date().toLocaleString('es-ES'), { s: 9.5, rgb: GRIS, adv: 16 });
+
+  titulo('Indicadores');
+  cols([
+    { t: 'OEE: ' + fmtPct(k.oee), x: M, b: true },
+    { t: 'Disponibilidad: ' + fmtPct(k.availability), x: 160 },
+    { t: 'Rendimiento: ' + fmtPct(k.performance), x: 315 },
+    { t: 'Calidad: ' + fmtPct(k.quality), x: 460 },
+  ], 16);
+
+  titulo('Plan de produccion');
+  cols([
+    { t: 'Planificadas: ' + (p.planificadas ?? '-'), x: M },
+    { t: 'Completadas: ' + (p.completadas ?? '-'), x: 160 },
+    { t: 'OK: ' + (p.ok ?? '-'), x: 300, rgb: VERDE, b: true },
+    { t: 'NOK: ' + (p.nok ?? '-'), x: 370, rgb: ROJO, b: true },
+    { t: 'Desv.: ' + (p.desviacion_pct != null ? (p.desviacion_pct > 0 ? '+' : '') + p.desviacion_pct.toFixed(1) + ' %' : '-'), x: 450 },
+  ], 16);
+
+  titulo('Analisis del turno (IA)');
+  parrafo(analisis, { s: 10, adv: 14 });
+
+  const seqs = Array.isArray(lastSeqs) ? lastSeqs : [];
+  if (seqs.length) {
+    titulo('Secuencias del dia');
+    cols([
+      { t: 'Sec.', x: M, b: true }, { t: 'Bastidor', x: 75, b: true }, { t: 'Modelo', x: 185, b: true },
+      { t: 'Resultado', x: 350, b: true }, { t: 'Operario', x: 460, b: true },
+    ], 15);
+    for (const q of seqs) {
+      const st = seqEstado(q);
+      cols([
+        { t: q.secuencia ?? '-', x: M },
+        { t: seqBastidor(q), x: 75 },
+        { t: q.modelo ?? q.descripcion ?? '-', x: 185 },
+        { t: st === 'done' ? 'OK' : st === 'nok' ? 'NOK' : st === 'curso' ? 'En curso' : 'Pendiente',
+          x: 350, b: st === 'done' || st === 'nok', rgb: st === 'nok' ? ROJO : st === 'done' ? VERDE : NEGRO },
+        { t: q.operario ?? '-', x: 460 },
+      ], 14);
+    }
+  }
+
+  const alertas = k.alerts || [];
+  if (alertas.length) {
+    titulo('Alertas KPI activas');
+    for (const a of alertas) parrafo('- [' + a.severity + '] ' + a.message + ' (valor ' + a.value + ', umbral ' + a.threshold + ')', { s: 9.5 });
+  }
+  const activas = (lastAlarms || []).filter(a => a.activa);
+  if (activas.length) {
+    titulo('Alarmas de mantenimiento activas');
+    for (const a of activas) parrafo('- N. ' + a.id + ' [' + a.tipo + '] ' + a.descripcion + ' (desde ' + fmtTs(a.fecha_y_hora) + ')', { s: 9.5 });
+  }
+  paginas.push(cur);
+
+  // Ensamblado del PDF (offsets en bytes latin-1)
+  const escPdf = t => t.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const objetos = [];
+  const nPag = paginas.length;
+  const idPagina = i => 5 + i * 2;
+  objetos[1] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
+  objetos[2] = '2 0 obj\n<< /Type /Pages /Kids [' +
+    paginas.map((_, i) => idPagina(i) + ' 0 R').join(' ') + '] /Count ' + nPag + ' >>\nendobj\n';
+  objetos[3] = '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n';
+  objetos[4] = '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n';
+  paginas.forEach((pg, i) => {
+    const contenido = pg.map(l =>
+      'BT /' + l.f + ' ' + l.s + ' Tf 1 0 0 1 ' + l.x + ' ' + l.y.toFixed(1) + ' Tm ' + l.rgb + ' rg (' + escPdf(l.t) + ') Tj ET'
+    ).join('\n') + '\n';
+    objetos[idPagina(i)] = idPagina(i) + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] ' +
+      '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (idPagina(i) + 1) + ' 0 R >>\nendobj\n';
+    objetos[idPagina(i) + 1] = (idPagina(i) + 1) + ' 0 obj\n<< /Length ' + contenido.length + ' >>\nstream\n' + contenido + 'endstream\nendobj\n';
+  });
+  let cuerpo = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let i = 1; i < objetos.length; i++) { offsets[i] = cuerpo.length; cuerpo += objetos[i]; }
+  const xrefPos = cuerpo.length;
+  cuerpo += 'xref\n0 ' + objetos.length + '\n0000000000 65535 f \n';
+  for (let i = 1; i < objetos.length; i++) cuerpo += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  cuerpo += 'trailer\n<< /Size ' + objetos.length + ' /Root 1 0 R >>\nstartxref\n' + xrefPos + '\n%%EOF';
+  const bytes = new Uint8Array(cuerpo.length);
+  for (let i = 0; i < cuerpo.length; i++) { const c = cuerpo.charCodeAt(i); bytes[i] = c < 256 ? c : 45; }
+  return new Blob([bytes], { type: 'application/pdf' });
+}
+
 // ── INFORME DEL TURNO (imprimir / PDF) ──
-function informeTurno() {
+async function informeTurno() {
   const k = lastKpi;
   if (!k) { showToast('Aún no hay datos del servidor'); return; }
+  // la ventana se abre antes del análisis para no perder el gesto del usuario
+  let win = null;
+  try {
+    win = window.open('', '_blank');
+    if (win) win.document.write('<meta charset="utf-8"><title>Informe del turno</title>' +
+      '<p style="font-family:sans-serif;color:#555;padding:20px">Generando informe con análisis…</p>');
+  } catch (e) { win = null; }
+  const analisis = await analisisIA();
   const p = k.plan || {};
   const seqs = Array.isArray(lastSeqs) ? lastSeqs : [];
   const activas = (lastAlarms || []).filter(a => a.activa);
@@ -3263,6 +3474,8 @@ function informeTurno() {
     <h2>Plan de producción</h2>
     <table><tr><th>Planificadas</th><th>Completadas</th><th>OK</th><th>NOK</th><th>Desviación</th></tr>
     <tr><td>${esc(p.planificadas ?? '—')}</td><td>${esc(p.completadas ?? '—')}</td><td class="pr-ok">${esc(p.ok ?? '—')}</td><td class="pr-nok">${esc(p.nok ?? '—')}</td><td>${p.desviacion_pct != null ? esc((p.desviacion_pct > 0 ? '+' : '') + p.desviacion_pct.toFixed(1) + ' %') : '—'}</td></tr></table>
+    <h2>Análisis del turno (IA)</h2>
+    <p style="line-height:1.55">${esc(analisis)}</p>
     ${seqs.length ? `<h2>Secuencias del día</h2>
     <table><tr><th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>Resultado</th><th>Operario</th></tr>
     ${seqs.map(s => `<tr><td>${esc(s.secuencia ?? '—')}</td><td>${esc(seqBastidor(s))}</td><td>${esc(s.modelo ?? s.descripcion ?? '—')}</td><td class="${estadoCls(s)}">${estadoTxt(s)}</td><td>${esc(s.operario ?? '—')}</td></tr>`).join('')}</table>` : ''}
@@ -3298,18 +3511,17 @@ function informeTurno() {
     </style></head><body>
     <button class="no-print" onclick="window.print()">🖨 Imprimir / Guardar como PDF</button>
     <a class="no-print" style="background:#40565F;text-align:center;text-decoration:none;box-sizing:border-box"
-       href="mailto:?subject=${encodeURIComponent(asuntoCorreo())}&body=${encodeURIComponent(resumenTexto() || '')}">📧 Enviar resumen por correo</a>
+       href="mailto:?subject=${encodeURIComponent(asuntoCorreo())}&body=${encodeURIComponent((resumenTexto() || '') + '\n\nANÁLISIS (IA)\n' + analisis)}">📧 Enviar resumen por correo</a>
     ${informeHtml}
     </body></html>`;
-  let abierto = null;
-  try {
-    abierto = window.open('', '_blank');
-    if (abierto) {
-      abierto.document.write(doc);
-      abierto.document.close();
-    }
-  } catch (e) { abierto = null; }
-  if (!abierto) {
+  if (win) {
+    try {
+      win.document.open();
+      win.document.write(doc);
+      win.document.close();
+    } catch (e) { win = null; }
+  }
+  if (!win) {
     // Reserva: imprimir dentro de la propia página
     document.getElementById('print-area').innerHTML = informeHtml;
     document.body.classList.add('printing');
@@ -3434,11 +3646,39 @@ function asuntoCorreo() {
     (k.shift_label ? ' — ' + k.shift_label : '') + ' · ' + new Date().toLocaleDateString('es-ES');
 }
 
-function enviarCorreo() {
+async function enviarCorreo() {
   const text = resumenTexto();
   if (!text) { showToast('Aún no hay datos del servidor'); return; }
-  location.href = 'mailto:?subject=' + encodeURIComponent(asuntoCorreo()) +
-    '&body=' + encodeURIComponent(text);
+  showToast('Preparando el informe PDF…');
+  const analisis = await analisisIA();
+  const pdf = generarPdf(analisis);
+  const fichero = new File([pdf], 'informe-turno-logisnext.pdf', { type: 'application/pdf' });
+  const cuerpo = text + '\n\nANÁLISIS (IA)\n' + analisis;
+
+  // 1) Compartir nativo con el PDF adjunto (elige Gmail/Outlook y va adjunto)
+  if (navigator.canShare && navigator.canShare({ files: [fichero] })) {
+    try {
+      await navigator.share({ files: [fichero], title: asuntoCorreo(), text: cuerpo });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // el usuario canceló
+    }
+  }
+
+  // 2) Reserva: descarga el PDF y abre el correo con el cuerpo redactado
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(pdf);
+  a.download = 'informe-turno-logisnext.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('PDF descargado — adjúntalo al correo que se abre');
+  setTimeout(() => {
+    try {
+      location.href = 'mailto:?subject=' + encodeURIComponent(asuntoCorreo()) +
+        '&body=' + encodeURIComponent(cuerpo);
+    } catch (e) {}
+  }, 900);
 }
 
 async function compartirResumen() {
