@@ -42,7 +42,13 @@ ni compilación, con el código de colores Logisnext HMI.
 
 Extras: **modo panel de planta (Andon)** a pantalla completa con el OEE
 gigante, reloj y ticker de alarmas para colgar una tablet/TV; **informe del
-turno imprimible/PDF** con KPIs, plan, secuencias y alarmas; **asistente
+turno imprimible/PDF** con los gráficos del panel (evolución del OEE, anillo
+de resultados, alarmas), KPIs, plan, secuencias y un análisis IA;
+**envío por correo con el PDF ya adjunto**: la app genera el PDF y el
+servidor lo manda por SMTP al destinatario que elijas (requiere las
+variables `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+`SMTP_FROM` en el backend; si no están configuradas, la app ofrece
+compartirlo con otra app); **asistente
 MES/OEE** conectado al agente del backend; y comodidades:
 desliza hacia abajo para refrescar, toca el gauge de OEE
 para ver la evolución ampliada con media/mín/máx, comparte el resumen del
