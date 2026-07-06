@@ -1695,6 +1695,14 @@
       </div>
     </section>
 
+    <section id="dash-7d-sec">
+      <div class="sec-title">Últimos 7 días — OK / NOK</div>
+      <div class="dash-card">
+        <svg id="dash-7d" viewBox="0 0 340 150" aria-label="Resultados OK y NOK de los últimos 7 días"></svg>
+        <div class="dash-leyenda" id="dash-7d-leyenda" style="margin-top:8px"></div>
+      </div>
+    </section>
+
     <section>
       <div class="sec-title">Alarmas de mantenimiento</div>
       <div class="dash-card dash-barras" id="dash-alarms"></div>
@@ -1742,6 +1750,8 @@
       <div id="cal-list">
         <div class="skel"></div><div class="skel"></div>
       </div>
+      <button class="btn danger" onclick="exportarCsv()" style="margin-top:12px">⬇ Exportar el listado (CSV)</button>
+      <div class="form-hint" style="text-align:center">Exporta lo que ves (fecha o rango y filtro aplicados) para abrirlo en Excel.</div>
     </section>
   </div>
 
@@ -2682,9 +2692,49 @@ document.getElementById('cal-list').addEventListener('click', e => {
   if (s) openSeqSheet(s);
 });
 
+// ── EXPORTAR EL LISTADO DE CALIDAD A CSV (Excel) ──
+async function exportarCsv() {
+  const fuente = calRango ? calSeqsFecha : lastSeqs;
+  if (!Array.isArray(fuente) || !fuente.length) { showToast('No hay listado que exportar'); return; }
+  const ST_TXT = { done: 'OK', nok: 'NOK', curso: 'En curso', pend: 'Pendiente' };
+  const cel = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const hoyF = ymd(new Date());
+  const filas = fuente
+    .map(s => ({ s, st: seqEstado(s) }))
+    .filter(r => filterCalidad === 'ok' ? r.st === 'done' : filterCalidad === 'nok' ? r.st === 'nok' : true)
+    .map(({ s, st }) => [
+      fechaBonita(String(s.fecha || (calRango ? calRango.desde : hoyF))),
+      s.secuencia ?? '',
+      seqBastidor(s),
+      s.modelo ?? s.descripcion ?? '',
+      ST_TXT[st],
+      s.operario ?? '',
+    ].map(cel).join(';'));
+  if (!filas.length) { showToast('Sin filas para el filtro seleccionado'); return; }
+  // BOM + punto y coma: se abre directo en Excel en español
+  const csv = '\ufeff' + ['Fecha', 'Secuencia', 'Bastidor', 'Modelo', 'Resultado', 'Operario'].map(cel).join(';') +
+    '\r\n' + filas.join('\r\n');
+  const nombre = 'calidad-' + (calRango
+    ? calRango.desde + (calRango.hasta !== calRango.desde ? '-' + calRango.hasta : '')
+    : hoyF) + '.csv';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const fich = new File([blob], nombre, { type: 'text/csv' });
+  if (navigator.canShare && navigator.canShare({ files: [fich] })) {
+    try { await navigator.share({ files: [fich], title: 'Listado OK/NOK Logisnext' }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('CSV descargado — ' + filas.length + ' fila(s)');
+}
+
 let lastKpi = null;
 
-function renderKpi(kpi) {
+function renderKpi(kpi, esCache) {
   lastKpi = kpi;
   const alerts = kpi.alerts || [];
   const plan = kpi.plan || {};
@@ -2717,7 +2767,8 @@ function renderKpi(kpi) {
   mk('tile-performance', kpi.performance, 'performance');
   mk('tile-quality', kpi.quality, 'quality');
   setGauge(kpi.oee);
-  renderSpark(pushHist(kpi.oee));
+  // Los datos guardados no añaden puntos nuevos al histórico de la sesión
+  renderSpark(esCache ? loadHist() : pushHist(kpi.oee));
 
   document.getElementById('plan-planificadas').textContent = plan.planificadas ?? '—';
   document.getElementById('plan-completadas').textContent = plan.completadas ?? '—';
@@ -2922,13 +2973,35 @@ async function refreshAll() {
     renderAndon();
     renderDashboard();
     setConnection(true);
+    // Copia local para poder abrir la app sin conexión con los últimos datos
+    try {
+      localStorage.setItem('ln_cache_' + machine, JSON.stringify({ t: Date.now(), kpi: summary.kpi, maint }));
+    } catch (e) {}
   } catch (e) {
     console.error('Error actualizando:', e);
     setConnection(false);
+    if (!lastKpi) mostrarCache(machine);
   } finally {
     refreshing = false;
     btn.classList.remove('spin');
   }
+}
+
+// Sin conexión al abrir: pinta los últimos datos guardados en el dispositivo
+function mostrarCache(machine) {
+  try {
+    const c = JSON.parse(localStorage.getItem('ln_cache_' + machine) || 'null');
+    if (!c || !c.kpi) return false;
+    renderKpi(c.kpi, true);
+    renderMaintenanceCounts(c.maint || {});
+    lastAlarms = (c.maint && c.maint.alarmas) || [];
+    renderAlarms(filtrarAlarmas());
+    renderDashboard();
+    const min = Math.max(1, Math.round((Date.now() - c.t) / 60000));
+    showToast('📴 Sin conexión — mostrando los datos guardados de hace ' +
+      (min < 60 ? min + ' min' : Math.round(min / 60) + ' h'));
+    return true;
+  } catch (e) { return false; }
 }
 
 function showView(name) {
@@ -3075,7 +3148,9 @@ function enterApp(user) {
   document.getElementById('nav-asistente').style.display = views.includes('asistente') ? '' : 'none';
   document.getElementById('no-access').style.display = views.length ? 'none' : 'block';
 
-  showView(views.length ? views[0] : 'ajustes');
+  // Accesos directos de la app instalada (#panel, #calidad, #andon…)
+  const hash = (location.hash || '').replace('#', '').replace('panel', 'dashboard');
+  showView(views.includes(hash) ? hash : views.length ? views[0] : 'ajustes');
 
   initThrUI();
   updateAvisosUI();
@@ -3090,6 +3165,16 @@ function enterApp(user) {
   refreshAll();
   startAutoRefresh();
   registerServiceWorker().then(() => updatePushStatusUI());
+  if (hash === 'andon') setTimeout(entrarAndon, 400);
+}
+
+// Aviso cuando el service worker instala una versión nueva de la app
+if ('serviceWorker' in navigator) {
+  let teniaControlador = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (teniaControlador) showToast('✨ Aplicación actualizada a la última versión');
+    teniaControlador = true;
+  });
 }
 
 function bindFilter(rowId, apply) {
@@ -3388,6 +3473,85 @@ function renderDashboard() {
   renderDashOee();
   renderDashDonut();
   renderDashAlarms();
+  cargarHist7d(false);
+  // Si el Panel está a la vista, refresca el análisis IA (limitado a 1 vez / 2 min)
+  if (document.getElementById('view-dashboard').classList.contains('active')) cargarAnalisisDash(false);
+}
+
+// ── ÚLTIMOS 7 DÍAS (OK/NOK por día desde /alerts/sequences) ──
+let hist7d = null, hist7dTs = 0;
+
+async function cargarHist7d(forzar) {
+  if (!forzar && hist7d && Date.now() - hist7dTs < 300000) { renderDash7d(); return; }
+  if (!getSession()) return;
+  const hoy = new Date();
+  const ini = new Date(); ini.setDate(hoy.getDate() - 6);
+  try {
+    const data = await api('/sequences', { desde: ymd(ini), hasta: ymd(hoy) });
+    const seqs = Array.isArray(data.secuencias) ? data.secuencias : [];
+    const porDia = {}, dias = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + i);
+      porDia[ymd(d)] = { d, ok: 0, nok: 0 };
+      dias.push(porDia[ymd(d)]);
+    }
+    for (const s of seqs) {
+      const f = String(s.fecha || '').replace(/-/g, '').slice(0, 8);
+      const st = seqEstado(s);
+      if (porDia[f]) { if (st === 'done') porDia[f].ok++; else if (st === 'nok') porDia[f].nok++; }
+    }
+    // El día en curso se toma del resumen en vivo (siempre al día)
+    if (Array.isArray(lastSeqs)) {
+      const dh = porDia[ymd(hoy)];
+      if (dh) {
+        dh.ok = lastSeqs.filter(s => seqEstado(s) === 'done').length;
+        dh.nok = lastSeqs.filter(s => seqEstado(s) === 'nok').length;
+      }
+    }
+    hist7d = dias;
+    hist7dTs = Date.now();
+    renderDash7d();
+  } catch (e) {
+    // Backend sin el endpoint de fechas: se oculta la tarjeta
+    if (!hist7d) document.getElementById('dash-7d-sec').style.display = 'none';
+  }
+}
+
+function renderDash7d() {
+  const svg = document.getElementById('dash-7d');
+  const ley = document.getElementById('dash-7d-leyenda');
+  if (!hist7d) return;
+  document.getElementById('dash-7d-sec').style.display = '';
+  const W = 340, H = 150, L = 10, R = 6, T = 20, B = 24;
+  const maxV = Math.max(1, ...hist7d.map(d => d.ok + d.nok));
+  const bw = (W - L - R) / 7;
+  const DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const hoyStr = new Date().toDateString();
+  let out = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="var(--track)" stroke-width="1"/>';
+  hist7d.forEach((d, i) => {
+    const x = L + i * bw + bw * 0.2, w = bw * 0.6;
+    const hOk = (H - T - B) * d.ok / maxV;
+    const hNok = (H - T - B) * d.nok / maxV;
+    const y0 = H - B;
+    if (d.ok) out += '<rect x="' + x.toFixed(1) + '" y="' + (y0 - hOk).toFixed(1) + '" width="' + w.toFixed(1) +
+      '" height="' + Math.max(hOk, 2).toFixed(1) + '" rx="2" fill="var(--green)"/>';
+    if (d.nok) out += '<rect x="' + x.toFixed(1) + '" y="' + (y0 - hOk - hNok).toFixed(1) + '" width="' + w.toFixed(1) +
+      '" height="' + Math.max(hNok, 2).toFixed(1) + '" rx="2" fill="var(--red)"/>';
+    const tot = d.ok + d.nok;
+    if (tot) out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y0 - hOk - hNok - 5).toFixed(1) +
+      '" text-anchor="middle" class="dash-axis" font-weight="700">' + tot + '</text>';
+    const esHoy = d.d.toDateString() === hoyStr;
+    out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" class="dash-axis"' +
+      (esHoy ? ' font-weight="800" fill="var(--brand-ink)"' : '') + '>' + (esHoy ? 'hoy' : DIA[d.d.getDay()]) + '</text>';
+  });
+  svg.innerHTML = out;
+  const totOk = hist7d.reduce((a, d) => a + d.ok, 0);
+  const totNok = hist7d.reduce((a, d) => a + d.nok, 0);
+  const cal = totOk + totNok ? Math.round(totOk / (totOk + totNok) * 100) + ' %' : '—';
+  ley.innerHTML =
+    '<div class="lg"><i style="background:var(--green)"></i>OK<b>' + totOk + '</b></div>' +
+    '<div class="lg"><i style="background:var(--red)"></i>NOK<b>' + totNok + '</b></div>' +
+    '<div class="lg">Calidad 7 días<b>' + cal + '</b></div>';
 }
 
 function renderDashOee() {
