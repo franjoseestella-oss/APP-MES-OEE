@@ -29,9 +29,11 @@ ni compilación, con el código de colores Logisnext HMI.
   la cámara (o escríbelo a mano) y te dice el resultado de las pruebas de la
   jaula — ✔ OK / ⛔ NOK con tiempos de elevación/descenso medidos frente a los
   teóricos, operario y modelo — o «No realizado» si aún no se ha probado.
-  Incluye el listado OK/NOK del día con filtros. Requiere el backend con
-  `kpi.secuencias` y el endpoint `/alerts/sequence-detail` (rama
-  `claude/secuencias-calidad` de `MES-OEE-jaula`, ya en `main`).
+  Incluye el listado OK/NOK del día con filtros y **exportación a CSV**
+  (se abre directo en Excel) de la fecha o rango que estés viendo.
+  Requiere el backend con `kpi.secuencias` y el endpoint
+  `/alerts/sequence-detail` (rama `claude/secuencias-calidad` de
+  `MES-OEE-jaula`, ya en `main`).
 - **Mantenimiento** 🔧 — alarmas y advertencias activas y registro de alarmas
   (`LOG_ALARMAS`) con filtros por estado y tipo, y hora relativa
   («hace 22 min») en cada registro.
@@ -56,11 +58,19 @@ turno por WhatsApp/correo, busca por texto en el registro de alarmas, cierra
 las fichas deslizándolas hacia abajo y, con la app instalada, el icono
 muestra un globo con el número de alertas activas.
 
+El **Panel** incluye además la gráfica de los **últimos 7 días** (OK/NOK por
+día con la calidad media de la semana), construida con el endpoint
+`/alerts/sequences` por rango de fechas.
+
 Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
 app está en segundo plano; al volver a primer plano o recuperar la red se
 refresca al instante). El botón ↻ de la cabecera fuerza una actualización.
-El *service worker* cachea la interfaz, así que la app abre incluso sin
-conexión (mostrando el aviso de «Sin conexión» hasta recuperar el servidor).
+El *service worker* cachea la interfaz y la app guarda los últimos datos en
+el dispositivo: **sin conexión abre igualmente** mostrando los datos
+guardados (con aviso de su antigüedad) hasta recuperar el servidor. Con la
+app instalada hay **accesos directos** (pulsación larga del icono) al Panel,
+a Calidad y al modo Andon, y avisa con un toast cuando se instala una
+versión nueva.
 
 ## Requisitos
 
