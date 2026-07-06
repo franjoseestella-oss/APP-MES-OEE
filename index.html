@@ -3405,20 +3405,44 @@ function generarPdf(analisis) {
       ['En curso', cnt.curso, '0.12 0.53 0.59'], ['Pendiente', cnt.pend, '0.76 0.8 0.82'],
     ];
     titulo('Resultados de hoy');
-    bloque(46, yTop => {
-      const x0 = M, ancho = W - 2 * M, alto = 16, yB = yTop - alto;
-      let o = 'q ', xAcc = x0;
+    // Anillo (donut) como el del panel: arcos con Bezier de <=90 grados
+    const arco = (cx, cy, r, a0, a1, rgb, w) => {
+      const px = a => cx + r * Math.cos(a), py = a => cy + r * Math.sin(a);
+      const n = Math.max(1, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 2)));
+      const paso = (a1 - a0) / n;
+      let o = rgb + ' RG ' + num(w) + ' w ' + num(px(a0)) + ' ' + num(py(a0)) + ' m ';
+      for (let i = 0; i < n; i++) {
+        const b0 = a0 + i * paso, b1 = b0 + paso;
+        const kk = 4 / 3 * Math.tan((b1 - b0) / 4) * r;
+        o += num(px(b0) - kk * Math.sin(b0)) + ' ' + num(py(b0) + kk * Math.cos(b0)) + ' ' +
+          num(px(b1) + kk * Math.sin(b1)) + ' ' + num(py(b1) - kk * Math.cos(b1)) + ' ' +
+          num(px(b1)) + ' ' + num(py(b1)) + ' c ';
+      }
+      return o + 'S ';
+    };
+    bloque(104, yTop => {
+      const cx = M + 62, cy = yTop - 50, r = 36;
+      const total = seqsG.length;
+      const visibles = partes.filter(pp => pp[1] > 0).length;
+      const hueco = visibles > 1 ? 0.045 : 0; // separación entre segmentos, como en el panel
+      let o = 'q ';
+      let ang = Math.PI / 2; // empieza arriba, sentido horario
       for (const [, n, rgb] of partes) {
         if (!n) continue;
-        const wSeg = Math.max(ancho * n / seqsG.length - 1.5, 0.5);
-        o += rgb + ' rg ' + num(xAcc) + ' ' + num(yB) + ' ' + num(wSeg) + ' ' + alto + ' re f ';
-        xAcc += ancho * n / seqsG.length;
+        const barrido = 2 * Math.PI * n / total;
+        o += arco(cx, cy, r, ang - hueco / 2, ang - barrido + hueco / 2, rgb, 14);
+        ang -= barrido;
       }
-      let xL = x0;
+      const tTot = String(total);
+      o += textoOp(tTot, cx - tTot.length * 4.5, cy - 4, 16, NEGRO, true) +
+        textoOp('bastidores', cx - 17, cy - 16, 7, GRIS);
+      let yL = yTop - 18;
       for (const [nombre, n, rgb] of partes) {
-        o += rgb + ' rg ' + num(xL) + ' ' + num(yB - 16) + ' 7 7 re f ' +
-          textoOp(nombre + ': ' + n, xL + 11, yB - 15, 8.5, NEGRO);
-        xL += 95;
+        o += rgb + ' rg ' + num(cx + r + 42) + ' ' + num(yL - 7) + ' 8 8 re f ' +
+          textoOp(nombre, cx + r + 55, yL - 6, 9, NEGRO) +
+          textoOp(String(n), cx + r + 150, yL - 6, 9.5, NEGRO, true) +
+          textoOp(total ? Math.round(n / total * 100) + ' %' : '', cx + r + 185, yL - 6, 9, GRIS);
+        yL -= 21;
       }
       return o + 'Q ';
     });
@@ -3706,9 +3730,87 @@ function asuntoCorreo() {
     (k.shift_label ? ' — ' + k.shift_label : '') + ' · ' + new Date().toLocaleDateString('es-ES');
 }
 
-async function enviarCorreo() {
+function enviarCorreo() {
   const text = resumenTexto();
   if (!text) { showToast('Aún no hay datos del servidor'); return; }
+  const dest = localStorage.getItem('ln_correo_dest') || '';
+  openSheet(`
+    <div class="sh-head"><span class="sh-title">📧 Enviar informe del turno</span></div>
+    <div class="sh-desc">
+      Se genera el PDF con el panel y el análisis IA y <b>el servidor lo envía
+      con el PDF ya adjunto</b>: no hace falta hacer nada más en el móvil.
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label for="correo-dest">Destinatario</label>
+      <input type="email" id="correo-dest" placeholder="nombre@logisnext.com" inputmode="email"
+        autocapitalize="off" autocomplete="email" value="${esc(dest)}">
+    </div>
+    <button class="btn" id="btn-enviar-pdf" onclick="enviarInformeBackend()">📨 Enviar con el PDF adjunto</button>
+    <button class="btn danger" onclick="compartirInforme()">📤 Compartir con otra app…</button>
+    <div class="test-result" id="correo-estado" role="status"></div>`);
+  const inp = document.getElementById('correo-dest');
+  if (inp && !dest) setTimeout(() => inp.focus(), 250);
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') enviarInformeBackend(); });
+}
+
+// Prepara el PDF y lo envía por el backend (POST /alerts/send-report → SMTP)
+async function enviarInformeBackend() {
+  const inp = document.getElementById('correo-dest');
+  const estado = document.getElementById('correo-estado');
+  const btn = document.getElementById('btn-enviar-pdf');
+  const para = (inp ? inp.value : '').trim();
+  if (!para || !para.includes('@')) {
+    if (estado) { estado.textContent = 'Escribe el correo del destinatario'; estado.className = 'test-result fail'; }
+    if (inp) inp.focus();
+    return;
+  }
+  localStorage.setItem('ln_correo_dest', para);
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando el PDF…'; }
+  if (estado) { estado.textContent = ''; estado.className = 'test-result'; }
+  try {
+    const analisis = await analisisIA();
+    const pdf = generarPdf(analisis);
+    const b64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1] || '');
+      fr.onerror = () => rej(new Error('No se pudo leer el PDF'));
+      fr.readAsDataURL(pdf);
+    });
+    if (btn) btn.textContent = 'Enviando…';
+    const { url } = cfg();
+    const r = await fetch(url + '/api/v1/alerts/send-report', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        para,
+        asunto: asuntoCorreo(),
+        cuerpo: resumenTexto() + '\n\nANÁLISIS (IA)\n' + analisis,
+        pdf_base64: b64,
+        nombre_fichero: 'informe-turno-logisnext.pdf',
+      }),
+    });
+    if (r.ok) {
+      closeSheet();
+      showToast('📨 Informe enviado a ' + para + ' con el PDF adjunto');
+      return;
+    }
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 404 || r.status === 405) throw new Error('El servidor aún no tiene el envío de correo: actualiza el backend (git pull + reinicio)');
+    throw new Error(typeof d.detail === 'string' ? d.detail : 'Error ' + r.status + ' del servidor');
+  } catch (e) {
+    if (estado) {
+      estado.textContent = '⚠️ ' + (e && e.message ? e.message : 'No se pudo enviar') + ' — puedes usar «Compartir con otra app»';
+      estado.className = 'test-result fail';
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '📨 Enviar con el PDF adjunto'; }
+  }
+}
+
+// Alternativa manual: compartir el PDF con la app que elija el usuario
+async function compartirInforme() {
+  const text = resumenTexto();
+  if (!text) { showToast('Aún no hay datos del servidor'); return; }
+  closeSheet();
   showToast('Preparando el informe PDF…');
   const analisis = await analisisIA();
   const pdf = generarPdf(analisis);
