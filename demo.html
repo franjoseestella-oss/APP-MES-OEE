@@ -803,6 +803,18 @@
     cursor: pointer; opacity: 0.55; line-height: 1;
   }
   .pw-eye:active { opacity: 1; }
+  /* Transiciones suaves: entrada de vistas y aguja del OEE */
+  .view.active { animation: viewIn 0.22s ease; }
+  @keyframes viewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  #gauge-oee { transition: stroke-dashoffset 0.7s cubic-bezier(0.22, 0.8, 0.36, 1); }
+  #dash-donut circle[data-f], .dash-leyenda .lg[data-f] { cursor: pointer; }
+  .hito {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .hito:last-child { border-bottom: none; }
+  .hito span { color: var(--label); }
+  .hito b { color: var(--text); }
   .btn {
     width: 100%;
     border: 1px solid var(--brand);
@@ -1259,6 +1271,14 @@
     return Math.min(3 + Math.floor((Date.now() - t0) / 90000), DEFS.length);
   }
 
+  // Semilla del ritmo del plan para que la proyección a fin de plan se vea al entrar
+  try {
+    localStorage.setItem('ln_plan_JAULA-01', JSON.stringify([
+      { t: t0 - 45 * 60000, c: 1 },
+      { t: t0 - 60000, c: Math.max(hechas() - 1, 2) },
+    ]));
+  } catch (e) {}
+
   function secuencias() {
     const n = hechas();
     return DEFS.map((d, i) => {
@@ -1353,6 +1373,16 @@
     const q = pregunta.toLowerCase();
     const k = summary().kpi;
     const seqs = secuencias();
+    if (q.includes('dirección') || q.includes('direccion') || (q.includes('resumen') && !q.includes('redacta'))) {
+      const noks = seqs.filter(s => s.resultado === 'NOK');
+      return '**Resumen ejecutivo — turno ' + k.shift_label + ' (' + k.machine_id + ')**\n\n' +
+        '- **OEE ' + k.oee.toFixed(1) + ' %** frente al objetivo del 75 % (' + (k.oee >= 75 ? 'en objetivo ✅' : 'por debajo ⚠️') + ').\n' +
+        '- **Plan**: ' + k.plan.completadas + ' de ' + k.plan.planificadas + ' bastidores completados (' +
+        Math.round(k.plan.completadas / k.plan.planificadas * 100) + ' %), ritmo estable de ~40 bastidores/h equivalente.\n' +
+        '- **Calidad**: ' + k.plan.ok + ' OK / ' + noks.length + ' NOK' + (noks.length ? ' (' + noks.map(s => s.bastidor).join(', ') + '), causa dominante: elevación con carga fuera de rango.' : '.') + '\n' +
+        '- **Riesgos**: alarma del variador del eje X y presión de aire baja en línea 2; ambas penalizan la disponibilidad.\n' +
+        '- **Acción recomendada**: cerrar los avisos de mantenimiento antes del próximo lote y repetir las pruebas de los NOK tras el reglaje.';
+    }
     if (q.includes('redacta un análisis') || q.includes('redacta un analisis')) {
       const noks = seqs.filter(s => s.resultado === 'NOK');
       const peor = [['la disponibilidad', k.availability], ['el rendimiento', k.performance], ['la calidad', k.quality]]
@@ -1608,6 +1638,11 @@
       </div>
       <div class="plan-progress"><div class="pp-fill" id="plan-progress-fill"></div></div>
       <div class="pp-meta"><span>Avance del plan</span><span id="plan-progress-label">—</span></div>
+      <div class="tile st-cyan" id="tile-proyeccion" style="margin-bottom:8px;display:none">
+        <div class="t-label">Proyección a fin de plan</div>
+        <div class="t-value" style="font-size:20px">—</div>
+        <div class="t-status">—</div>
+      </div>
       <div class="tile st-cyan" id="tile-secuencia" style="margin-bottom:8px">
         <div class="t-label">Secuencia actual</div>
         <div class="t-value" style="font-size:20px">—</div>
@@ -1714,6 +1749,11 @@
       </div>
     </section>
 
+    <section id="dash-hitos-sec" style="display:none">
+      <div class="sec-title">Hitos</div>
+      <div class="dash-card" id="dash-hitos"></div>
+    </section>
+
     <section>
       <div class="sec-title">Alarmas de mantenimiento</div>
       <div class="dash-card dash-barras" id="dash-alarms"></div>
@@ -1814,6 +1854,7 @@
         el plan o las secuencias — consulto los datos reales del MES.</div>
       </div>
       <div class="filter-row" id="chat-suggests">
+        <button class="fchip">Resumen para dirección</button>
         <button class="fchip">¿Cómo va el OEE hoy?</button>
         <button class="fchip">¿Cuántos NOK llevamos?</button>
         <button class="fchip">Últimas alarmas</button>
@@ -2023,11 +2064,32 @@ function api(path, params) {
   });
 }
 
+// Cuenta animada: los porcentajes suben/bajan suavemente hasta el valor nuevo
+const tweenPrev = {};
+function animarNum(el, clave, objetivo, formato) {
+  const prev = tweenPrev[clave];
+  tweenPrev[clave] = objetivo;
+  if (prev === undefined || prev === objetivo || !isFinite(prev)) { el.textContent = formato(objetivo); return; }
+  const t0 = performance.now(), dur = 650;
+  const paso = ahora => {
+    const p = Math.min(1, (ahora - t0) / dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = formato(prev + (objetivo - prev) * e);
+    if (p < 1 && tweenPrev[clave] === objetivo) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+}
+
 function setTile(id, value, status, pct) {
   const tile = document.getElementById(id);
   const isHero = tile.classList.contains('hero');
   tile.className = 'tile ' + (isHero ? 'hero ' : '') + 'st-' + status;
-  tile.querySelector('.t-value').textContent = value;
+  const valEl = tile.querySelector('.t-value');
+  if (typeof pct === 'number' && isFinite(pct) && /%$/.test(String(value).trim())) {
+    animarNum(valEl, id, pct, v => v.toFixed(1) + ' %');
+  } else {
+    valEl.textContent = value;
+  }
   tile.querySelector('.t-status').textContent = STATUS_LABEL[status] || status;
   const bar = tile.querySelector('.t-bar-fill');
   if (bar) {
@@ -2150,6 +2212,46 @@ function pushHist(v) {
 
 function loadHist() {
   try { return JSON.parse(localStorage.getItem(histKey()) || '[]') || []; } catch (e) { return []; }
+}
+
+// ── PROYECCIÓN DEL PLAN (ritmo de bastidores completados) ──
+function planHistKey() { return 'ln_plan_' + (cfg().machine || ''); }
+
+function loadPlanHist() {
+  try { return JSON.parse(localStorage.getItem(planHistKey()) || '[]') || []; } catch (e) { return []; }
+}
+
+function pushPlanHist(c) {
+  if (typeof c !== 'number' || !isFinite(c)) return;
+  const now = Date.now();
+  let h = loadPlanHist().filter(p => now - p.t < 10 * 3600e3);
+  const last = h[h.length - 1];
+  if (last && c < last.c) h = []; // turno/plan nuevo: se reinicia el ritmo
+  if (!h.length || h[h.length - 1].c !== c) {
+    h.push({ t: now, c });
+    try { localStorage.setItem(planHistKey(), JSON.stringify(h.slice(-200))); } catch (e) {}
+  }
+}
+
+function proyeccionPlan(plan) {
+  const total = plan && plan.planificadas;
+  const done = plan && plan.completadas;
+  if (!total || done === null || done === undefined) return null;
+  if (done >= total) return { completado: true };
+  const h = loadPlanHist();
+  if (h.length < 2) return null;
+  const a = h[0], b = h[h.length - 1];
+  const spanMs = b.t - a.t;
+  if (spanMs < 3 * 60000 || b.c <= a.c) return null;
+  const porHora = (b.c - a.c) / (spanMs / 3600e3);
+  const etaMs = (total - done) / porHora * 3600e3;
+  if (etaMs > 16 * 3600e3) return null;
+  const fin = new Date(Date.now() + etaMs);
+  return {
+    completado: false,
+    porHora: Math.round(porHora * 10) / 10,
+    horaTxt: fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+  };
 }
 
 function renderSpark(h) {
@@ -2855,6 +2957,26 @@ function renderKpi(kpi, esCache) {
   document.getElementById('plan-progress-fill').style.width = progress + '%';
   document.getElementById('plan-progress-label').textContent =
     total > 0 ? done + ' / ' + total + ' · ' + progress.toFixed(0) + ' %' : '—';
+
+  // Proyección: a este ritmo, ¿a qué hora termina el plan?
+  if (!esCache && total > 0) pushPlanHist(done);
+  const proy = total > 0 ? proyeccionPlan(plan) : null;
+  const tileP = document.getElementById('tile-proyeccion');
+  if (proy) {
+    tileP.style.display = '';
+    if (proy.completado) {
+      tileP.className = 'tile st-ok';
+      tileP.querySelector('.t-value').textContent = '✔ Plan completado';
+      tileP.querySelector('.t-status').textContent = 'Los ' + total + ' bastidores planificados están hechos';
+    } else {
+      tileP.className = 'tile st-cyan';
+      tileP.querySelector('.t-value').textContent = '≈ ' + proy.horaTxt;
+      tileP.querySelector('.t-status').textContent =
+        'A este ritmo (' + proy.porHora + ' bastidores/h) terminaría el plan';
+    }
+  } else {
+    tileP.style.display = 'none';
+  }
 
   let stDesv = 'none';
   const desv = plan.desviacion_pct;
@@ -3567,6 +3689,7 @@ async function cargarHist7d(forzar) {
     hist7d = dias;
     hist7dTs = Date.now();
     renderDash7d();
+    renderHitos();
   } catch (e) {
     // Backend sin el endpoint de fechas: se oculta la tarjeta
     if (!hist7d) document.getElementById('dash-7d-sec').style.display = 'none';
@@ -3658,10 +3781,10 @@ function renderDashDonut() {
   for (const q of seqs) cnt[seqEstado(q)]++;
   const total = seqs.length;
   const datos = [
-    ['OK', cnt.done, 'var(--green)'],
-    ['NOK', cnt.nok, 'var(--red)'],
-    ['En curso', cnt.curso, 'var(--cyan)'],
-    ['Pendiente', cnt.pend, 'var(--border-2)'],
+    ['OK', cnt.done, 'var(--green)', 'ok'],
+    ['NOK', cnt.nok, 'var(--red)', 'nok'],
+    ['En curso', cnt.curso, 'var(--cyan)', ''],
+    ['Pendiente', cnt.pend, 'var(--border-2)', ''],
   ];
   if (!total) {
     svg.innerHTML = '';
@@ -3671,10 +3794,10 @@ function renderDashDonut() {
   const C = 2 * Math.PI * 45;
   let acumulado = 0;
   let segs = '';
-  for (const [, n, color] of datos) {
+  for (const [, n, color, filtro] of datos) {
     if (!n) continue;
     const len = C * n / total;
-    segs += '<circle cx="60" cy="60" r="45" fill="none" stroke="' + color + '" stroke-width="16" ' +
+    segs += '<circle cx="60" cy="60" r="45" fill="none" stroke="' + color + '" stroke-width="16" data-f="' + filtro + '" ' +
       'stroke-dasharray="' + Math.max(len - 2, 0.5).toFixed(1) + ' ' + (C - Math.max(len - 2, 0.5)).toFixed(1) + '" ' +
       'stroke-dashoffset="' + (-acumulado).toFixed(1) + '" transform="rotate(-90 60 60)"/>';
     acumulado += len;
@@ -3682,8 +3805,57 @@ function renderDashDonut() {
   svg.innerHTML = segs +
     '<text x="60" y="58" text-anchor="middle" font-size="22" font-weight="800" fill="var(--text)" font-family="var(--font)">' + total + '</text>' +
     '<text x="60" y="74" text-anchor="middle" class="dash-axis">bastidores</text>';
-  ley.innerHTML = datos.map(([nombre, n, color]) =>
-    '<div class="lg"><i style="background:' + color + '"></i>' + nombre + '<b>' + n + '</b></div>').join('');
+  ley.innerHTML = datos.map(([nombre, n, color, filtro]) =>
+    '<div class="lg" data-f="' + filtro + '"><i style="background:' + color + '"></i>' + nombre + '<b>' + n + '</b></div>').join('');
+}
+
+// Tocar un segmento del anillo (o su leyenda) abre Calidad con ese filtro
+function irACalidad(filtro) {
+  const s = getSession();
+  if (!s || !allowedViews(s.nivel_usuario).includes('calidad')) return;
+  filterCalidad = filtro || '';
+  for (const c of document.querySelectorAll('#filter-calidad .fchip')) {
+    c.classList.toggle('active', c.dataset.value === filterCalidad);
+  }
+  showView('calidad');
+  renderCalidad();
+}
+
+document.getElementById('dash-donut').addEventListener('click', e => {
+  const seg = e.target.closest('[data-f]');
+  if (seg) irACalidad(seg.dataset.f);
+});
+document.getElementById('dash-donut-leyenda').addEventListener('click', e => {
+  const seg = e.target.closest('[data-f]');
+  if (seg) irACalidad(seg.dataset.f);
+});
+
+// ── HITOS DE LA SEMANA ──
+function renderHitos() {
+  const sec = document.getElementById('dash-hitos-sec');
+  const cont = document.getElementById('dash-hitos');
+  const filas = [];
+  if (Array.isArray(hist7d)) {
+    let racha = 0;
+    for (let i = hist7d.length - 1; i >= 0; i--) {
+      const d = hist7d[i];
+      if (!(d.ok + d.nok)) { if (i === hist7d.length - 1) continue; break; }
+      if (d.nok === 0) racha++; else break;
+    }
+    if (racha) filas.push(['🟢 Racha sin NOK', racha + (racha === 1 ? ' día' : ' días')]);
+    const mejor = hist7d.reduce((a, b) => (b.ok > (a ? a.ok : -1) ? b : a), null);
+    if (mejor && mejor.ok) {
+      const DIA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+      filas.push(['🏆 Mejor día de la semana', DIA[mejor.d.getDay()] + ' · ' + mejor.ok + ' OK']);
+    }
+    const tOk = hist7d.reduce((a, d) => a + d.ok, 0);
+    const tNok = hist7d.reduce((a, d) => a + d.nok, 0);
+    if (tOk + tNok) filas.push(['📦 Producción de la semana', (tOk + tNok) + ' bastidores']);
+  }
+  const h = loadHist();
+  if (h.length >= 3) filas.push(['📈 OEE máximo de la sesión', Math.max(...h.map(p => p.v)).toFixed(1) + ' %']);
+  sec.style.display = filas.length ? '' : 'none';
+  cont.innerHTML = filas.map(f => '<div class="hito"><span>' + f[0] + '</span><b>' + f[1] + '</b></div>').join('');
 }
 
 function renderDashAlarms() {
@@ -3743,6 +3915,9 @@ function analisisLocal() {
   if (p.planificadas) {
     const done = p.completadas || 0;
     fr.push('Del plan se han completado ' + done + ' de ' + p.planificadas + ' bastidores (' + Math.round(done / p.planificadas * 100) + ' %).');
+    const proy = proyeccionPlan(p);
+    if (proy && proy.completado) fr.push('El plan del día ya está completado.');
+    else if (proy) fr.push('A este ritmo (' + proy.porHora + ' bastidores/h) el plan terminaría hacia las ' + proy.horaTxt + '.');
   }
   const noks = Array.isArray(lastSeqs) ? lastSeqs.filter(x => seqEstado(x) === 'nok') : [];
   if (noks.length) fr.push('Atención a los bastidores NOK (' + noks.map(x => seqBastidor(x)).join(', ') +
@@ -3897,6 +4072,12 @@ function generarPdf(analisis) {
     { t: 'NOK: ' + (p.nok ?? '-'), x: 370, rgb: ROJO, b: true },
     { t: 'Desv.: ' + (p.desviacion_pct != null ? (p.desviacion_pct > 0 ? '+' : '') + p.desviacion_pct.toFixed(1) + ' %' : '-'), x: 450 },
   ], 16);
+  const proyPdf = proyeccionPlan(p);
+  if (proyPdf && !proyPdf.completado) {
+    linea('Proyeccion: a este ritmo (' + proyPdf.porHora + ' bastidores/h) el plan terminaria hacia las ' + proyPdf.horaTxt + '.', { s: 9.5, rgb: GRIS });
+  } else if (proyPdf && proyPdf.completado) {
+    linea('Plan del dia completado.', { s: 9.5, rgb: VERDE });
+  }
 
   // ── Gráficos del dashboard (vectoriales) ──
   const circulo = (cx, cy, r, rgb) => {
