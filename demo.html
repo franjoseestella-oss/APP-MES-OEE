@@ -795,6 +795,14 @@
     box-shadow: 0 0 0 3px var(--brand-soft);
   }
   .form-hint { font-size: 10px; color: var(--label); margin-top: 6px; line-height: 1.45; }
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 46px; }
+  .pw-eye {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; font-size: 17px; padding: 10px;
+    cursor: pointer; opacity: 0.55; line-height: 1;
+  }
+  .pw-eye:active { opacity: 1; }
   .btn {
     width: 100%;
     border: 1px solid var(--brand);
@@ -1484,7 +1492,10 @@
     </div>
     <div class="form-group">
       <label for="login-password">Contraseña</label>
-      <input type="password" id="login-password" value="demo" autocomplete="off">
+      <div class="pw-wrap">
+        <input type="password" id="login-password" value="demo" autocomplete="off">
+        <button type="button" class="pw-eye" onclick="togglePw()" aria-label="Mostrar u ocultar la contraseña">👁</button>
+      </div>
     </div>
     <button class="btn" type="submit" id="login-btn">Entrar</button>
     <div class="form-hint" style="text-align:center">Modo test: cualquier correo y contraseña valen. Prueba a buscar B-0416 en Calidad.</div>
@@ -1731,6 +1742,7 @@
       </div>
       <div class="test-result" id="scan-msg" role="status"></div>
       <div id="scan-result"></div>
+      <div class="filter-row" id="scan-recientes" style="margin-top:10px;display:none"></div>
     </section>
 
     <section>
@@ -2452,6 +2464,8 @@ async function doBuscar(rawCode) {
     return;
   }
 
+  pushReciente(code);
+
   // 1) Buscar en las secuencias del día ya cargadas
   let s = Array.isArray(lastSeqs) ? lastSeqs.find(x => seqMatches(x, code.toLowerCase())) : null;
 
@@ -2500,6 +2514,38 @@ async function doBuscar(rawCode) {
 document.getElementById('scan-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') doBuscar();
 });
+
+// ── CALIDAD: CÓDIGOS BUSCADOS RECIENTEMENTE ──
+function pushReciente(code) {
+  try {
+    const r = JSON.parse(localStorage.getItem('ln_recientes') || '[]').filter(c => c !== code);
+    r.unshift(code);
+    localStorage.setItem('ln_recientes', JSON.stringify(r.slice(0, 5)));
+  } catch (e) {}
+  renderRecientes();
+}
+
+function renderRecientes() {
+  const cont = document.getElementById('scan-recientes');
+  let r = [];
+  try { r = JSON.parse(localStorage.getItem('ln_recientes') || '[]'); } catch (e) {}
+  cont.style.display = r.length ? '' : 'none';
+  cont.innerHTML = r.length
+    ? '<span style="align-self:center;color:var(--label);font-size:11px">Recientes:</span>' +
+      r.map(c => '<button class="fchip" data-c="' + esc(c) + '">' + esc(c) + '</button>').join('')
+    : '';
+}
+
+document.getElementById('scan-recientes').addEventListener('click', e => {
+  const b = e.target.closest('.fchip');
+  if (b) doBuscar(b.dataset.c);
+});
+renderRecientes();
+
+function togglePw() {
+  const i = document.getElementById('login-password');
+  i.type = i.type === 'password' ? 'text' : 'password';
+}
 
 let scanStream = null;
 let scanRAF = null;
@@ -2733,6 +2779,7 @@ async function exportarCsv() {
 }
 
 let lastKpi = null;
+let prevNok = null;
 
 function renderKpi(kpi, esCache) {
   lastKpi = kpi;
@@ -2774,6 +2821,15 @@ function renderKpi(kpi, esCache) {
   document.getElementById('plan-completadas').textContent = plan.completadas ?? '—';
   document.getElementById('plan-ok').textContent = plan.ok ?? '—';
   document.getElementById('plan-nok').textContent = plan.nok ?? '—';
+
+  // Aviso cuando aparece un bastidor NOK nuevo en el turno
+  if (!esCache && plan.nok != null) {
+    if (prevNok !== null && plan.nok > prevNok) {
+      showToast('⛔ Bastidor NOK nuevo — revisa Calidad');
+      if (avisosOn()) { beep(); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
+    }
+    prevNok = plan.nok;
+  }
 
   // Secuencia en curso: admite un código simple o un objeto con detalle.
   // Si el backend aún no envía el campo, la tarjeta queda en «Sin datos».
@@ -3566,6 +3622,10 @@ function renderDashOee() {
   const avg = vs.reduce((a, b) => a + b, 0) / vs.length;
   let min = Math.min(...vs), max = Math.max(...vs);
   if (max - min < 4) { const m = (max + min) / 2; min = m - 2; max = m + 2; }
+  // Si el usuario tiene umbral personal de OEE, se dibuja como línea de objetivo
+  const thrD = getThr();
+  const objetivo = thrD.oee && thrD.oee.en ? +thrD.oee.val : null;
+  if (objetivo != null) { min = Math.min(min, objetivo - 1.5); max = Math.max(max, objetivo + 1.5); }
   const x = i => L + (W - L - R) * i / (h.length - 1);
   const y = v => H - B - (H - T - B) * (v - min) / (max - min);
   const linea = h.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join('');
@@ -3575,6 +3635,10 @@ function renderDashOee() {
     '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(max).toFixed(1) + '" y2="' + y(max).toFixed(1) + '" stroke="var(--track)" stroke-width="1"/>' +
     '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(min).toFixed(1) + '" y2="' + y(min).toFixed(1) + '" stroke="var(--track)" stroke-width="1"/>' +
     '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(avg).toFixed(1) + '" y2="' + y(avg).toFixed(1) + '" stroke="var(--label)" stroke-width="1" stroke-dasharray="4 4"/>' +
+    (objetivo != null
+      ? '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(objetivo).toFixed(1) + '" y2="' + y(objetivo).toFixed(1) + '" stroke="var(--red)" stroke-width="1" stroke-dasharray="6 4" opacity="0.75"/>' +
+        '<text x="' + (W - R) + '" y="' + (y(objetivo) - 4).toFixed(1) + '" text-anchor="end" class="dash-axis" fill="var(--red)">mi objetivo ' + objetivo + '</text>'
+      : '') +
     '<text x="' + (L - 4) + '" y="' + (y(max) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">' + max.toFixed(0) + '</text>' +
     '<text x="' + (L - 4) + '" y="' + (y(min) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">' + min.toFixed(0) + '</text>' +
     '<text x="' + (L - 4) + '" y="' + (y(avg) + 3).toFixed(1) + '" text-anchor="end" class="dash-axis">x&#772;</text>' +
@@ -3777,6 +3841,12 @@ function generarPdf(analisis) {
     cur.push({ raw: ops(yTop) });
     y = yTop - altura - 10;
   };
+  // Título + gráfico juntos: si no caben en la página, saltan los dos
+  const seccion = (t, altura, ops) => {
+    if (y - 30 - altura < 56) nuevaPagina();
+    titulo(t);
+    bloque(altura, ops);
+  };
 
   // Cabecera corporativa: banda azul pizarra con el wordmark Logisnext en blanco
   const bandera = primera => {
@@ -3799,9 +3869,8 @@ function generarPdf(analisis) {
   cur.push({ raw: bandera(true) });
   y = H - 92 - 28;
 
-  titulo('Indicadores');
   // Tarjetas de KPI como las de la app: fondo claro con el borde azul a la izquierda
-  bloque(48, yTop => {
+  seccion('Indicadores', 48, yTop => {
     const items = [
       ['OEE', fmtPct(k.oee), SLATE],
       ['Disponibilidad', fmtPct(k.availability), NEGRO],
@@ -3840,8 +3909,7 @@ function generarPdf(analisis) {
   };
   const hist = loadHist();
   if (hist.length >= 2) {
-    titulo('Evolucion del OEE - sesion');
-    bloque(120, yTop => {
+    seccion('Evolucion del OEE - sesion', 120, yTop => {
       const x0 = M + 22, x1 = W - M, hC = 96, yB = yTop - hC;
       const vs = hist.map(pt => pt.v);
       const avg = vs.reduce((a, b) => a + b, 0) / vs.length;
@@ -3875,7 +3943,6 @@ function generarPdf(analisis) {
       ['OK', cnt.done, VERDE], ['NOK', cnt.nok, ROJO],
       ['En curso', cnt.curso, '0.12 0.53 0.59'], ['Pendiente', cnt.pend, '0.76 0.8 0.82'],
     ];
-    titulo('Resultados de hoy');
     // Anillo (donut) como el del panel: arcos con Bezier de <=90 grados
     const arco = (cx, cy, r, a0, a1, rgb, w) => {
       const px = a => cx + r * Math.cos(a), py = a => cy + r * Math.sin(a);
@@ -3891,7 +3958,7 @@ function generarPdf(analisis) {
       }
       return o + 'S ';
     };
-    bloque(104, yTop => {
+    seccion('Resultados de hoy', 104, yTop => {
       const cx = M + 62, cy = yTop - 50, r = 36;
       const total = seqsG.length;
       const visibles = partes.filter(pp => pp[1] > 0).length;
@@ -3919,11 +3986,42 @@ function generarPdf(analisis) {
     });
   }
 
+  // Últimos 7 días: barras OK/NOK como en el panel
+  if (Array.isArray(hist7d) && hist7d.some(d => d.ok + d.nok)) {
+    seccion('Ultimos 7 dias - OK / NOK', 112, yTop => {
+      const x0 = M, x1 = W - M - 96, yB = yTop - 90, hC = 72;
+      const maxV = Math.max(1, ...hist7d.map(d => d.ok + d.nok));
+      const bw = (x1 - x0) / 7;
+      const DIA = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
+      const hoyStr = new Date().toDateString();
+      let o = 'q 0.75 0.78 0.8 RG 0.7 w ' + num(x0) + ' ' + num(yB) + ' m ' + num(x1) + ' ' + num(yB) + ' l S ';
+      hist7d.forEach((d, i) => {
+        const x = x0 + i * bw + bw * 0.2, w = bw * 0.6;
+        const hOk = hC * d.ok / maxV, hNok = hC * d.nok / maxV;
+        if (d.ok) o += VERDE + ' rg ' + num(x) + ' ' + num(yB) + ' ' + num(w) + ' ' + num(Math.max(hOk, 1.5)) + ' re f ';
+        if (d.nok) o += ROJO + ' rg ' + num(x) + ' ' + num(yB + hOk) + ' ' + num(w) + ' ' + num(Math.max(hNok, 1.5)) + ' re f ';
+        const tot = d.ok + d.nok;
+        if (tot) o += textoOp(String(tot), x + w / 2 - String(tot).length * 2.3, yB + hOk + hNok + 4, 8, NEGRO, true);
+        const esHoy = d.d.toDateString() === hoyStr;
+        o += textoOp(esHoy ? 'hoy' : DIA[d.d.getDay()], x + w / 2 - 7.5, yB - 12, 8, esHoy ? SLATE : GRIS, esHoy);
+      });
+      const totOk = hist7d.reduce((a, d) => a + d.ok, 0);
+      const totNok = hist7d.reduce((a, d) => a + d.nok, 0);
+      const calSem = totOk + totNok ? Math.round(totOk / (totOk + totNok) * 100) + ' %' : '-';
+      let yL = yTop - 16;
+      o += VERDE + ' rg ' + num(x1 + 18) + ' ' + num(yL - 7) + ' 8 8 re f ' + textoOp('OK ' + totOk, x1 + 30, yL - 6, 9, NEGRO);
+      yL -= 20;
+      o += ROJO + ' rg ' + num(x1 + 18) + ' ' + num(yL - 7) + ' 8 8 re f ' + textoOp('NOK ' + totNok, x1 + 30, yL - 6, 9, NEGRO);
+      yL -= 24;
+      o += textoOp('Calidad 7 dias', x1 + 18, yL - 4, 7.5, GRIS) + textoOp(calSem, x1 + 18, yL - 19, 12, SLATE, true);
+      return o + 'Q ';
+    });
+  }
+
   const actA = lastMaint ? (lastMaint.alarmas_activas || 0) : 0;
   const actW = lastMaint ? (lastMaint.advertencias_activas || 0) : 0;
   const cerr = (lastAlarms || []).filter(a => !a.activa).length;
-  titulo('Alarmas de mantenimiento');
-  bloque(56, yTop => {
+  seccion('Alarmas de mantenimiento', 56, yTop => {
     const filas = [['Alarmas activas', actA, ROJO], ['Advert. activas', actW, '0.78 0.5 0'], ['Cerradas (ult.)', cerr, '0.76 0.8 0.82']];
     const maxV = Math.max(1, actA, actW, cerr);
     const xB = M + 110, ancho = W - M - xB - 30, alto = 9;
@@ -4242,7 +4340,7 @@ async function enviarInformeBackend() {
   if (btn) { btn.disabled = true; btn.textContent = 'Generando el PDF…'; }
   if (estado) { estado.textContent = ''; estado.className = 'test-result'; }
   try {
-    const analisis = await analisisIA();
+    const [analisis] = await Promise.all([analisisIA(), cargarHist7d(false)]);
     const pdf = generarPdf(analisis);
     const b64 = await new Promise((res, rej) => {
       const fr = new FileReader();
@@ -4286,7 +4384,7 @@ async function compartirInforme() {
   if (!text) { showToast('Aún no hay datos del servidor'); return; }
   closeSheet();
   showToast('Preparando el informe PDF…');
-  const analisis = await analisisIA();
+  const [analisis] = await Promise.all([analisisIA(), cargarHist7d(false)]);
   const pdf = generarPdf(analisis);
   const fichero = new File([pdf], 'informe-turno-logisnext.pdf', { type: 'application/pdf' });
   const cuerpo = text + '\n\nANÁLISIS (IA)\n' + analisis;
