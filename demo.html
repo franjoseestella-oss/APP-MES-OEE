@@ -3560,8 +3560,9 @@ function generarPdf(analisis) {
   const W = 595, H = 842, M = 40;
   const k = lastKpi || {};
   const p = k.plan || {};
-  const SLATE = '0.34 0.45 0.5', NEGRO = '0 0 0', GRIS = '0.4 0.4 0.4';
-  const VERDE = '0.08 0.48 0.26', ROJO = '0.7 0.14 0.18';
+  // Colores corporativos Logisnext (#56737F, #40565F, #263942, #189D54, #D63A45, #EFF2F3)
+  const SLATE = '0.34 0.45 0.5', OSCURO = '0.25 0.34 0.37', NEGRO = '0.15 0.22 0.26', GRIS = '0.42 0.47 0.5';
+  const VERDE = '0.09 0.62 0.33', ROJO = '0.84 0.23 0.27', CLARO = '0.94 0.95 0.95', BLANCO = '1 1 1';
 
   const escPdf = t => t.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
   const limpiar = t => String(t ?? '')
@@ -3572,7 +3573,7 @@ function generarPdf(analisis) {
   const paginas = [];
   let cur = [];
   let y = H - 56;
-  const nuevaPagina = () => { paginas.push(cur); cur = []; y = H - 56; };
+  const nuevaPagina = () => { paginas.push(cur); cur = [{ raw: bandera(false) }]; y = H - 70; };
   const linea = (t, o = {}) => {
     if (y < 56) nuevaPagina();
     cur.push({ t: limpiar(t), f: o.b ? 'F2' : 'F1', s: o.s || 10, x: o.x ?? M, y, rgb: o.rgb || NEGRO });
@@ -3593,19 +3594,67 @@ function generarPdf(analisis) {
     }
     if (fila.trim()) linea(fila.trim(), o);
   };
-  const titulo = t => { y -= 10; linea(t, { b: true, s: 12, rgb: SLATE, adv: 18 }); };
+  // Título de sección con el acento azul pizarra de la app
+  const titulo = t => {
+    y -= 12;
+    if (y < 80) nuevaPagina();
+    cur.push({ raw: SLATE + ' rg ' + M + ' ' + (y - 2.5).toFixed(2) + ' 3.5 13 re f ' });
+    cur.push({ t: limpiar(t), f: 'F2', s: 12, x: M + 10, y, rgb: SLATE });
+    y -= 18;
+  };
 
-  linea('Logisnext - Informe del turno', { b: true, s: 19, adv: 22 });
-  linea((k.machine_id || '') + (k.shift_label ? ' - Turno ' + k.shift_label : '') +
-    ' - generado el ' + new Date().toLocaleString('es-ES'), { s: 9.5, rgb: GRIS, adv: 16 });
+  // Utilidades vectoriales
+  const num = v => (+v).toFixed(2);
+  const textoOp = (t, x, yy, size, rgb, bold) =>
+    'BT /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf 1 0 0 1 ' + num(x) + ' ' + num(yy) + ' Tm ' + (rgb || NEGRO) + ' rg (' + escPdf(limpiar(t)) + ') Tj ET ';
+  const bloque = (altura, ops) => {
+    if (y - altura < 56) nuevaPagina();
+    const yTop = y;
+    cur.push({ raw: ops(yTop) });
+    y = yTop - altura - 10;
+  };
+
+  // Cabecera corporativa: banda azul pizarra con el wordmark Logisnext en blanco
+  const bandera = primera => {
+    const hB = primera ? 92 : 36;
+    let o = 'q ' + SLATE + ' rg 0 ' + (H - hB) + ' ' + W + ' ' + hB + ' re f ' +
+      OSCURO + ' rg 0 ' + (H - hB) + ' ' + W + ' 3 re f ';
+    if (primera) {
+      o += textoOp('Logisnext', M, H - 46, 24, BLANCO, true) +
+        textoOp('INFORME DEL TURNO  -  MES/OEE', M + 1, H - 66, 9, '0.85 0.9 0.92');
+      const info1 = limpiar((k.machine_id || '') + (k.shift_label ? '  -  Turno ' + k.shift_label : ''));
+      const info2 = 'Generado el ' + new Date().toLocaleString('es-ES');
+      o += textoOp(info1, W - M - info1.length * 5.6, H - 44, 10, BLANCO, true) +
+        textoOp(info2, W - M - info2.length * 4.1, H - 62, 8.5, '0.85 0.9 0.92');
+    } else {
+      o += textoOp('Logisnext', M, H - 24, 13, BLANCO, true) +
+        textoOp('Informe del turno  -  ' + limpiar(k.machine_id || 'MES/OEE'), M + 78, H - 23, 8.5, '0.85 0.9 0.92');
+    }
+    return o + 'Q ';
+  };
+  cur.push({ raw: bandera(true) });
+  y = H - 92 - 28;
 
   titulo('Indicadores');
-  cols([
-    { t: 'OEE: ' + fmtPct(k.oee), x: M, b: true },
-    { t: 'Disponibilidad: ' + fmtPct(k.availability), x: 160 },
-    { t: 'Rendimiento: ' + fmtPct(k.performance), x: 315 },
-    { t: 'Calidad: ' + fmtPct(k.quality), x: 460 },
-  ], 16);
+  // Tarjetas de KPI como las de la app: fondo claro con el borde azul a la izquierda
+  bloque(48, yTop => {
+    const items = [
+      ['OEE', fmtPct(k.oee), SLATE],
+      ['Disponibilidad', fmtPct(k.availability), NEGRO],
+      ['Rendimiento', fmtPct(k.performance), NEGRO],
+      ['Calidad', fmtPct(k.quality), NEGRO],
+    ];
+    const wC = (W - 2 * M - 3 * 10) / 4;
+    let o = 'q ';
+    items.forEach(([lbl, val, col], i) => {
+      const x = M + i * (wC + 10), yB = yTop - 44;
+      o += CLARO + ' rg ' + num(x) + ' ' + num(yB) + ' ' + num(wC) + ' 44 re f ' +
+        SLATE + ' rg ' + num(x) + ' ' + num(yB) + ' 3 44 re f ' +
+        textoOp(lbl.toUpperCase(), x + 11, yB + 29, 6.5, GRIS) +
+        textoOp(val, x + 11, yB + 11, 14, col, true);
+    });
+    return o + 'Q ';
+  });
 
   titulo('Plan de produccion');
   cols([
@@ -3617,13 +3666,6 @@ function generarPdf(analisis) {
   ], 16);
 
   // ── Gráficos del dashboard (vectoriales) ──
-  const num = v => (+v).toFixed(2);
-  const bloque = (altura, ops) => {
-    if (y - altura < 56) nuevaPagina();
-    const yTop = y;
-    cur.push({ raw: ops(yTop) });
-    y = yTop - altura - 10;
-  };
   const circulo = (cx, cy, r, rgb) => {
     const kk = 0.5523 * r;
     return rgb + ' rg ' + num(cx + r) + ' ' + num(cy) + ' m ' +
@@ -3632,9 +3674,6 @@ function generarPdf(analisis) {
       num(cx - r) + ' ' + num(cy - kk) + ' ' + num(cx - kk) + ' ' + num(cy - r) + ' ' + num(cx) + ' ' + num(cy - r) + ' c ' +
       num(cx + kk) + ' ' + num(cy - r) + ' ' + num(cx + r) + ' ' + num(cy - kk) + ' ' + num(cx + r) + ' ' + num(cy) + ' c f ';
   };
-  const textoOp = (t, x, yy, size, rgb, bold) =>
-    'BT /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf 1 0 0 1 ' + num(x) + ' ' + num(yy) + ' Tm ' + (rgb || NEGRO) + ' rg (' + escPdf(limpiar(t)) + ') Tj ET ';
-
   const hist = loadHist();
   if (hist.length >= 2) {
     titulo('Evolucion del OEE - sesion');
@@ -3782,7 +3821,10 @@ function generarPdf(analisis) {
   paginas.forEach((pg, i) => {
     const contenido = pg.map(l => l.raw ? l.raw :
       'BT /' + l.f + ' ' + l.s + ' Tf 1 0 0 1 ' + l.x + ' ' + l.y.toFixed(1) + ' Tm ' + l.rgb + ' rg (' + escPdf(l.t) + ') Tj ET'
-    ).join('\n') + '\n';
+    ).join('\n') + '\n' +
+      'q ' + SLATE + ' rg ' + M + ' 42 ' + (W - 2 * M) + ' 0.8 re f Q\n' +
+      textoOp('Logisnext  -  MES/OEE', M, 30, 7.5, GRIS) + '\n' +
+      textoOp('Pagina ' + (i + 1) + ' de ' + nPag, W - M - 58, 30, 7.5, GRIS) + '\n';
     objetos[idPagina(i)] = idPagina(i) + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] ' +
       '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (idPagina(i) + 1) + ' 0 R >>\nendobj\n';
     objetos[idPagina(i) + 1] = (idPagina(i) + 1) + ' 0 obj\n<< /Length ' + contenido.length + ' >>\nstream\n' + contenido + 'endstream\nendobj\n';
