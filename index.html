@@ -817,6 +817,20 @@
   .hito:last-child { border-bottom: none; }
   .hito span { color: var(--label); }
   .hito b { color: var(--text); }
+  .conn-dot.online.stale { color: #FFEBC7; }
+  .conn-dot.online.stale::before { background: var(--amber); animation: none; }
+  /* Tablet / apaisado: las secciones se reparten en dos columnas */
+  @media (min-width: 760px) {
+    .view { max-width: 1080px; margin: 0 auto; }
+    .view.active:not(#view-asistente):not(#view-ajustes) {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0 22px;
+      align-items: start;
+    }
+    .view.active > section { min-width: 0; }
+    #view-asistente, #view-ajustes { max-width: 640px; }
+  }
   .btn {
     width: 100%;
     border: 1px solid var(--brand);
@@ -1375,6 +1389,9 @@
 
     <section>
       <div class="sec-title" id="seq-sec-title">Secuencias de hoy</div>
+      <div class="form-group" style="margin-bottom:10px">
+        <input type="search" id="seq-search" placeholder="🔍 Filtrar por bastidor, modelo u operario…" autocomplete="off">
+      </div>
       <div id="seq-list">
         <div class="skel"></div><div class="skel"></div>
       </div>
@@ -1428,7 +1445,8 @@
       <button class="btn" onclick="compartirResumen()">📤 Compartir resumen del turno</button>
       <button class="btn" onclick="informeTurno()" style="margin-top:2px">🖨 Informe del turno (imprimir / PDF)</button>
       <button class="btn" onclick="enviarCorreo()" style="margin-top:2px">📧 Enviar por correo</button>
-      <div class="form-hint" style="text-align:center">Comparte por WhatsApp, abre tu correo con el resumen redactado o genera el informe en PDF.</div>
+      <button class="btn danger" id="btn-voz" onclick="escucharResumen()" style="margin-top:2px">🔊 Escuchar el resumen</button>
+      <div class="form-hint" style="text-align:center">Comparte por WhatsApp, genera el informe en PDF, envíalo por correo o escúchalo con manos libres.</div>
     </section>
   </div>
 
@@ -1460,9 +1478,14 @@
     </section>
 
     <section id="dash-7d-sec">
-      <div class="sec-title">Últimos 7 días — OK / NOK</div>
+      <div class="sec-title" id="dash-7d-titulo">Últimos 7 días — OK / NOK</div>
+      <div class="filter-row" id="dash-7d-rango">
+        <button class="fchip active" data-d="7">7 días</button>
+        <button class="fchip" data-d="14">14 días</button>
+        <button class="fchip" data-d="30">30 días</button>
+      </div>
       <div class="dash-card">
-        <svg id="dash-7d" viewBox="0 0 340 150" aria-label="Resultados OK y NOK de los últimos 7 días"></svg>
+        <svg id="dash-7d" viewBox="0 0 340 150" aria-label="Resultados OK y NOK de los últimos días"></svg>
         <div class="dash-leyenda" id="dash-7d-leyenda" style="margin-top:8px"></div>
       </div>
     </section>
@@ -2040,7 +2063,16 @@ function renderSeqList(kpi, plan) {
     cont.innerHTML = '<div class="empty-state">Sin secuencias planificadas para hoy.</div>';
     return;
   }
-  cont.innerHTML = seqs.map((s, i) => {
+  const q = (document.getElementById('seq-search').value || '').trim().toLowerCase();
+  const visibles = seqs
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => !q || [seqBastidor(s), s.modelo, s.descripcion, s.operario, s.mastil, s.secuencia]
+      .some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
+  if (!visibles.length) {
+    cont.innerHTML = '<div class="empty-state">Sin secuencias que coincidan con «' + esc(q) + '».</div>';
+    return;
+  }
+  cont.innerHTML = visibles.map(({ s, i }) => {
     const st = seqEstado(s);
     const desc = s.modelo ?? s.descripcion ?? s.articulo;
     const meta = [];
@@ -2061,6 +2093,10 @@ function renderSeqList(kpi, plan) {
       </div>`;
   }).join('');
 }
+
+document.getElementById('seq-search').addEventListener('input', () => {
+  if (lastKpi) renderSeqList(lastKpi, lastKpi.plan || {});
+});
 
 // ── BOTTOM SHEET ──
 function openSheet(html) {
@@ -2833,16 +2869,34 @@ function renderAlarms(alarmas) {
   }).join('');
 }
 
+let lastOkTs = null;
+
 function setConnection(ok) {
   const dot = document.getElementById('conn-dot');
   dot.textContent = ok ? 'En línea' : 'Sin conexión';
   dot.className = 'conn-dot ' + (ok ? 'online' : 'offline');
   document.getElementById('error-banner').classList.toggle('visible', !ok);
   if (ok) {
+    lastOkTs = Date.now();
     document.getElementById('last-update').textContent =
       'Actualizado ' + new Date().toLocaleTimeString('es-ES');
   }
 }
+
+// Si los datos envejecen (app en segundo plano, red lenta…), la píldora lo dice
+function actualizarFrescura() {
+  const dot = document.getElementById('conn-dot');
+  if (!lastOkTs || !dot.classList.contains('online')) return;
+  const min = Math.floor((Date.now() - lastOkTs) / 60000);
+  if (min >= 2) {
+    dot.textContent = 'Hace ' + (min < 60 ? min + ' min' : Math.floor(min / 60) + ' h');
+    dot.classList.add('stale');
+  } else {
+    dot.textContent = 'En línea';
+    dot.classList.remove('stale');
+  }
+}
+setInterval(actualizarFrescura, 20000);
 
 let filterEstado = 'todas';
 let filterTipo = '';
@@ -3370,19 +3424,19 @@ function renderDashboard() {
   if (document.getElementById('view-dashboard').classList.contains('active')) cargarAnalisisDash(false);
 }
 
-// ── ÚLTIMOS 7 DÍAS (OK/NOK por día desde /alerts/sequences) ──
-let hist7d = null, hist7dTs = 0;
+// ── ÚLTIMOS DÍAS (OK/NOK por día desde /alerts/sequences, 7/14/30) ──
+let hist7d = null, hist7dTs = 0, dias7d = 7;
 
 async function cargarHist7d(forzar) {
-  if (!forzar && hist7d && Date.now() - hist7dTs < 300000) { renderDash7d(); return; }
+  if (!forzar && hist7d && hist7d.length === dias7d && Date.now() - hist7dTs < 300000) { renderDash7d(); return; }
   if (!getSession()) return;
   const hoy = new Date();
-  const ini = new Date(); ini.setDate(hoy.getDate() - 6);
+  const ini = new Date(); ini.setDate(hoy.getDate() - (dias7d - 1));
   try {
     const data = await api('/sequences', { desde: ymd(ini), hasta: ymd(hoy) });
     const seqs = Array.isArray(data.secuencias) ? data.secuencias : [];
     const porDia = {}, dias = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < dias7d; i++) {
       const d = new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + i);
       porDia[ymd(d)] = { d, ok: 0, nok: 0 };
       dias.push(porDia[ymd(d)]);
@@ -3414,15 +3468,18 @@ function renderDash7d() {
   const svg = document.getElementById('dash-7d');
   const ley = document.getElementById('dash-7d-leyenda');
   if (!hist7d) return;
+  const N = hist7d.length;
   document.getElementById('dash-7d-sec').style.display = '';
+  document.getElementById('dash-7d-titulo').textContent = 'Últimos ' + N + ' días — OK / NOK';
   const W = 340, H = 150, L = 10, R = 6, T = 20, B = 24;
   const maxV = Math.max(1, ...hist7d.map(d => d.ok + d.nok));
-  const bw = (W - L - R) / 7;
+  const bw = (W - L - R) / N;
   const DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
   const hoyStr = new Date().toDateString();
+  const cadaEtq = N <= 7 ? 1 : Math.ceil(N / 8); // en 14/30 días no caben todas las etiquetas
   let out = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="var(--track)" stroke-width="1"/>';
   hist7d.forEach((d, i) => {
-    const x = L + i * bw + bw * 0.2, w = bw * 0.6;
+    const x = L + i * bw + bw * 0.18, w = bw * 0.64;
     const hOk = (H - T - B) * d.ok / maxV;
     const hNok = (H - T - B) * d.nok / maxV;
     const y0 = H - B;
@@ -3431,11 +3488,14 @@ function renderDash7d() {
     if (d.nok) out += '<rect x="' + x.toFixed(1) + '" y="' + (y0 - hOk - hNok).toFixed(1) + '" width="' + w.toFixed(1) +
       '" height="' + Math.max(hNok, 2).toFixed(1) + '" rx="2" fill="var(--red)"/>';
     const tot = d.ok + d.nok;
-    if (tot) out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y0 - hOk - hNok - 5).toFixed(1) +
+    if (tot && N <= 14) out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y0 - hOk - hNok - 5).toFixed(1) +
       '" text-anchor="middle" class="dash-axis" font-weight="700">' + tot + '</text>';
     const esHoy = d.d.toDateString() === hoyStr;
-    out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" class="dash-axis"' +
-      (esHoy ? ' font-weight="800" fill="var(--brand-ink)"' : '') + '>' + (esHoy ? 'hoy' : DIA[d.d.getDay()]) + '</text>';
+    if (esHoy || (i % cadaEtq === 0 && (N <= 7 || i < N - 2))) {
+      out += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" class="dash-axis"' +
+        (esHoy ? ' font-weight="800" fill="var(--brand-ink)"' : '') + '>' +
+        (esHoy ? 'hoy' : N <= 7 ? DIA[d.d.getDay()] : d.d.getDate()) + '</text>';
+    }
   });
   svg.innerHTML = out;
   const totOk = hist7d.reduce((a, d) => a + d.ok, 0);
@@ -3444,8 +3504,17 @@ function renderDash7d() {
   ley.innerHTML =
     '<div class="lg"><i style="background:var(--green)"></i>OK<b>' + totOk + '</b></div>' +
     '<div class="lg"><i style="background:var(--red)"></i>NOK<b>' + totNok + '</b></div>' +
-    '<div class="lg">Calidad 7 días<b>' + cal + '</b></div>';
+    '<div class="lg">Calidad ' + N + ' días<b>' + cal + '</b></div>';
 }
+
+document.getElementById('dash-7d-rango').addEventListener('click', e => {
+  const b = e.target.closest('.fchip');
+  if (!b) return;
+  for (const c of e.currentTarget.querySelectorAll('.fchip')) c.classList.remove('active');
+  b.classList.add('active');
+  dias7d = +b.dataset.d;
+  cargarHist7d(true);
+});
 
 function renderDashOee() {
   const svg = document.getElementById('dash-oee-chart');
@@ -3560,11 +3629,12 @@ function renderHitos() {
     const mejor = hist7d.reduce((a, b) => (b.ok > (a ? a.ok : -1) ? b : a), null);
     if (mejor && mejor.ok) {
       const DIA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-      filas.push(['🏆 Mejor día de la semana', DIA[mejor.d.getDay()] + ' · ' + mejor.ok + ' OK']);
+      filas.push(['🏆 Mejor día', DIA[mejor.d.getDay()] + ' ' + mejor.d.getDate() + ' · ' + mejor.ok + ' OK']);
     }
     const tOk = hist7d.reduce((a, d) => a + d.ok, 0);
     const tNok = hist7d.reduce((a, d) => a + d.nok, 0);
-    if (tOk + tNok) filas.push(['📦 Producción de la semana', (tOk + tNok) + ' bastidores']);
+    if (tOk + tNok) filas.push([
+      '📦 Producción (' + hist7d.length + ' días)', (tOk + tNok) + ' bastidores']);
   }
   const h = loadHist();
   if (h.length >= 3) filas.push(['📈 OEE máximo de la sesión', Math.max(...h.map(p => p.v)).toFixed(1) + ' %']);
@@ -3881,24 +3951,29 @@ function generarPdf(analisis) {
     });
   }
 
-  // Últimos 7 días: barras OK/NOK como en el panel
+  // Últimos días: barras OK/NOK como en el panel (7, 14 o 30 según lo elegido)
   if (Array.isArray(hist7d) && hist7d.some(d => d.ok + d.nok)) {
-    seccion('Ultimos 7 dias - OK / NOK', 112, yTop => {
+    const nDias = hist7d.length;
+    seccion('Ultimos ' + nDias + ' dias - OK / NOK', 112, yTop => {
       const x0 = M, x1 = W - M - 96, yB = yTop - 90, hC = 72;
       const maxV = Math.max(1, ...hist7d.map(d => d.ok + d.nok));
-      const bw = (x1 - x0) / 7;
+      const bw = (x1 - x0) / nDias;
       const DIA = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
       const hoyStr = new Date().toDateString();
+      const cadaEtq = nDias <= 7 ? 1 : Math.ceil(nDias / 10);
       let o = 'q 0.75 0.78 0.8 RG 0.7 w ' + num(x0) + ' ' + num(yB) + ' m ' + num(x1) + ' ' + num(yB) + ' l S ';
       hist7d.forEach((d, i) => {
-        const x = x0 + i * bw + bw * 0.2, w = bw * 0.6;
+        const x = x0 + i * bw + bw * 0.18, w = bw * 0.64;
         const hOk = hC * d.ok / maxV, hNok = hC * d.nok / maxV;
         if (d.ok) o += VERDE + ' rg ' + num(x) + ' ' + num(yB) + ' ' + num(w) + ' ' + num(Math.max(hOk, 1.5)) + ' re f ';
         if (d.nok) o += ROJO + ' rg ' + num(x) + ' ' + num(yB + hOk) + ' ' + num(w) + ' ' + num(Math.max(hNok, 1.5)) + ' re f ';
         const tot = d.ok + d.nok;
-        if (tot) o += textoOp(String(tot), x + w / 2 - String(tot).length * 2.3, yB + hOk + hNok + 4, 8, NEGRO, true);
+        if (tot && nDias <= 14) o += textoOp(String(tot), x + w / 2 - String(tot).length * 2.3, yB + hOk + hNok + 4, 8, NEGRO, true);
         const esHoy = d.d.toDateString() === hoyStr;
-        o += textoOp(esHoy ? 'hoy' : DIA[d.d.getDay()], x + w / 2 - 7.5, yB - 12, 8, esHoy ? SLATE : GRIS, esHoy);
+        if (esHoy || (i % cadaEtq === 0 && (nDias <= 7 || i < nDias - 2))) {
+          o += textoOp(esHoy ? 'hoy' : nDias <= 7 ? DIA[d.d.getDay()] : String(d.d.getDate()),
+            x + w / 2 - 7.5, yB - 12, 8, esHoy ? SLATE : GRIS, esHoy);
+        }
       });
       const totOk = hist7d.reduce((a, d) => a + d.ok, 0);
       const totNok = hist7d.reduce((a, d) => a + d.nok, 0);
@@ -3908,7 +3983,7 @@ function generarPdf(analisis) {
       yL -= 20;
       o += ROJO + ' rg ' + num(x1 + 18) + ' ' + num(yL - 7) + ' 8 8 re f ' + textoOp('NOK ' + totNok, x1 + 30, yL - 6, 9, NEGRO);
       yL -= 24;
-      o += textoOp('Calidad 7 dias', x1 + 18, yL - 4, 7.5, GRIS) + textoOp(calSem, x1 + 18, yL - 19, 12, SLATE, true);
+      o += textoOp('Calidad ' + nDias + ' dias', x1 + 18, yL - 4, 7.5, GRIS) + textoOp(calSem, x1 + 18, yL - 19, 12, SLATE, true);
       return o + 'Q ';
     });
   }
@@ -4318,6 +4393,66 @@ async function compartirResumen() {
     else { await navigator.clipboard.writeText(text); showToast('Resumen copiado al portapapeles'); }
   } catch (e) { /* compartir cancelado */ }
 }
+
+// ── ESCUCHAR EL RESUMEN (voz, manos libres en planta) ──
+let hablando = false;
+
+function escucharResumen() {
+  const btn = document.getElementById('btn-voz');
+  if (!('speechSynthesis' in window)) { showToast('Este navegador no soporta la lectura por voz'); return; }
+  if (hablando) {
+    speechSynthesis.cancel();
+    hablando = false;
+    btn.textContent = '🔊 Escuchar el resumen';
+    return;
+  }
+  const base = resumenTexto();
+  if (!base) { showToast('Aún no hay datos del servidor'); return; }
+  const texto = (base + '. ' + analisisLocal())
+    .replace(/[·—–]/g, ', ')
+    .replace(/%/g, ' por ciento')
+    .replace(/\bOEE\b/g, 'o e e')
+    .replace(/\bNOK\b/g, 'no ok')
+    .replace(/\n+/g, '. ');
+  const u = new SpeechSynthesisUtterance(texto);
+  u.lang = 'es-ES';
+  u.rate = 1.04;
+  u.onend = u.onerror = () => { hablando = false; btn.textContent = '🔊 Escuchar el resumen'; };
+  hablando = true;
+  btn.textContent = '⏹ Parar la lectura';
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+// ── NAVEGACIÓN DESLIZANDO ENTRE PESTAÑAS ──
+(function () {
+  let x0 = null, y0 = null;
+  document.addEventListener('touchstart', e => {
+    x0 = null;
+    if (e.touches.length !== 1) return;
+    if (e.target.closest('.filter-row, .sheet, #andon, .scan-modal, input, textarea, select, .chat-box, .plan-row, svg, #print-area')) return;
+    x0 = e.touches[0].clientX;
+    y0 = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > 50) return;
+    if (document.getElementById('sheet').classList.contains('open')) return;
+    if (document.getElementById('andon').classList.contains('open')) return;
+    const s = getSession();
+    if (!s) return;
+    const vs = allowedViews(s.nivel_usuario).concat('ajustes');
+    const actual = vs.find(v => document.getElementById('view-' + v).classList.contains('active'));
+    const j = vs.indexOf(actual) + (dx < 0 ? 1 : -1);
+    if (actual && j >= 0 && j < vs.length) {
+      showView(vs[j]);
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+  }, { passive: true });
+})();
 
 // ── BUSCADOR EN EL REGISTRO DE ALARMAS ──
 let lastAlarms = [];

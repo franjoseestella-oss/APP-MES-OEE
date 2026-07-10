@@ -58,9 +58,16 @@ turno por WhatsApp/correo, busca por texto en el registro de alarmas, cierra
 las fichas deslizándolas hacia abajo y, con la app instalada, el icono
 muestra un globo con el número de alertas activas.
 
-El **Panel** incluye además la gráfica de los **últimos 7 días** (OK/NOK por
-día con la calidad media de la semana), construida con el endpoint
-`/alerts/sequences` por rango de fechas.
+El **Panel** incluye además la gráfica de los **últimos 7/14/30 días**
+(OK/NOK por día con la calidad media del periodo, seleccionable), la tarjeta
+de **Hitos** (racha sin NOK, mejor día, producción del periodo) y el anillo
+de resultados **interactivo** (tocar OK/NOK abre Calidad filtrado) —
+construido con el endpoint `/alerts/sequences` por rango de fechas.
+En **Producción** están la **proyección a fin de plan** (ritmo real de
+bastidores/h y hora estimada de fin), el buscador del listado de secuencias
+y el botón 🔊 para **escuchar el resumen por voz** (manos libres). La app se
+navega también **deslizando entre pestañas**, avisa cuando los datos
+envejecen y en tablet/apaisado se reparte en **dos columnas**.
 
 Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
 app está en segundo plano; al volver a primer plano o recuperar la red se
