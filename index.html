@@ -796,6 +796,24 @@
     border-color: var(--brand);
     box-shadow: 0 0 0 3px var(--brand-soft);
   }
+  .form-group textarea {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: var(--font);
+    outline: none;
+    resize: vertical;
+    min-height: 74px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .form-group textarea:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--brand-soft);
+  }
   .form-hint { font-size: 10px; color: var(--label); margin-top: 6px; line-height: 1.45; }
   .pw-wrap { position: relative; }
   .pw-wrap input { padding-right: 46px; }
@@ -1442,6 +1460,15 @@
     </section>
 
     <section>
+      <div class="sec-title">Notas del turno</div>
+      <div class="form-group">
+        <textarea id="notas-turno" rows="3"
+          placeholder="Incidencias, relevos, observaciones… p. ej. «Cambiado latiguillo del eje X a las 10:40»"></textarea>
+        <div class="form-hint">Se guardan en este dispositivo por máquina y día, y viajan con el resumen, el PDF y el correo.</div>
+      </div>
+    </section>
+
+    <section>
       <button class="btn" onclick="compartirResumen()">📤 Compartir resumen del turno</button>
       <button class="btn" onclick="informeTurno()" style="margin-top:2px">🖨 Informe del turno (imprimir / PDF)</button>
       <button class="btn" onclick="enviarCorreo()" style="margin-top:2px">📧 Enviar por correo</button>
@@ -1475,6 +1502,11 @@
         <svg id="dash-donut" viewBox="0 0 120 120" style="width:120px;flex-shrink:0" aria-label="Resultados OK y NOK"></svg>
         <div class="dash-leyenda" id="dash-donut-leyenda"></div>
       </div>
+    </section>
+
+    <section id="dash-pareto-sec" style="display:none">
+      <div class="sec-title">Causas de NOK — hoy</div>
+      <div class="dash-card dash-barras" id="dash-pareto"></div>
     </section>
 
     <section id="dash-7d-sec">
@@ -1744,6 +1776,7 @@
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>
     </svg>
     Calidad
+    <span class="nav-badge zero" id="badge-cal"></span>
   </button>
   <button class="nav-btn" id="nav-mantenimiento" onclick="showView('mantenimiento')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2637,6 +2670,7 @@ async function exportarCsv() {
 
 let lastKpi = null;
 let prevNok = null;
+let prevDonePlan = null;
 
 function renderKpi(kpi, esCache) {
   lastKpi = kpi;
@@ -2679,6 +2713,11 @@ function renderKpi(kpi, esCache) {
   document.getElementById('plan-ok').textContent = plan.ok ?? '—';
   document.getElementById('plan-nok').textContent = plan.nok ?? '—';
 
+  // Globo con los NOK del día en la pestaña Calidad
+  const badgeCal = document.getElementById('badge-cal');
+  badgeCal.textContent = plan.nok || '';
+  badgeCal.classList.toggle('zero', !plan.nok);
+
   // Aviso cuando aparece un bastidor NOK nuevo en el turno
   if (!esCache && plan.nok != null) {
     if (prevNok !== null && plan.nok > prevNok) {
@@ -2686,6 +2725,15 @@ function renderKpi(kpi, esCache) {
       if (avisosOn()) { beep(); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
     }
     prevNok = plan.nok;
+  }
+
+  // Celebración al completar el plan del día
+  if (!esCache && plan.planificadas > 0 && plan.completadas != null) {
+    if (prevDonePlan !== null && prevDonePlan < plan.planificadas && plan.completadas >= plan.planificadas) {
+      showToast('🎉 Plan del día completado: ' + plan.planificadas + ' bastidores');
+      if (avisosOn()) { beep(); if (navigator.vibrate) navigator.vibrate([100, 60, 100, 60, 200]); }
+    }
+    prevDonePlan = plan.completadas;
   }
 
   // Secuencia en curso: admite un código simple o un objeto con detalle.
@@ -3104,6 +3152,7 @@ function enterApp(user) {
   showView(views.includes(hash) ? hash : views.length ? views[0] : 'ajustes');
 
   initThrUI();
+  cargarNotas();
   updateAvisosUI();
   updateWakeUI();
   if (wakeOn()) acquireWake();
@@ -3378,8 +3427,10 @@ function renderAndon() {
     const p = k.plan || {};
     const total = p.planificadas || 0, done = p.completadas || 0;
     document.getElementById('an-plan-fill').style.width = (total ? Math.min(100, done / total * 100) : 0) + '%';
+    const proyAn = total ? proyeccionPlan(p) : null;
     document.getElementById('an-plan-txt').textContent =
-      'Plan: ' + done + ' / ' + total + ' · ' + (p.ok ?? 0) + ' OK · ' + (p.nok ?? 0) + ' NOK';
+      'Plan: ' + done + ' / ' + total + ' · ' + (p.ok ?? 0) + ' OK · ' + (p.nok ?? 0) + ' NOK' +
+      (proyAn && !proyAn.completado ? ' · fin ≈ ' + proyAn.horaTxt : proyAn && proyAn.completado ? ' · ✔ completado' : '');
     document.getElementById('an-seq').textContent = k.secuencia_actual
       ? '▶ ' + (k.secuencia_actual.descripcion || k.secuencia_actual.codigo || '') : '';
   }
@@ -3420,8 +3471,60 @@ function renderDashboard() {
   renderDashDonut();
   renderDashAlarms();
   cargarHist7d(false);
+  cargarPareto(false);
   // Si el Panel está a la vista, refresca el análisis IA (limitado a 1 vez / 2 min)
   if (document.getElementById('view-dashboard').classList.contains('active')) cargarAnalisisDash(false);
+}
+
+// ── CAUSAS DE NOK (Pareto): agrega los pasos fallados de los bastidores NOK ──
+let paretoNok = null, paretoKey = '', paretoTs = 0;
+
+async function cargarPareto(forzar) {
+  const seqs = Array.isArray(lastSeqs) ? lastSeqs : [];
+  const noks = seqs.filter(s => seqEstado(s) === 'nok').slice(0, 10);
+  if (!noks.length) {
+    paretoNok = null;
+    paretoKey = '';
+    document.getElementById('dash-pareto-sec').style.display = 'none';
+    return;
+  }
+  const key = noks.map(s => seqBastidor(s)).join(',');
+  if (!forzar && key === paretoKey && Date.now() - paretoTs < 300000) { renderPareto(); return; }
+  paretoKey = key;
+  paretoTs = Date.now();
+  const causas = {};
+  const suma = t => { if (t) causas[t] = (causas[t] || 0) + 1; };
+  await Promise.all(noks.map(async s => {
+    let conDetalle = false;
+    try {
+      const d = await api('/sequence-detail', { bastidor: seqBastidor(s) });
+      for (const p of d.pasos || []) if (p.ok === false) { suma(p.paso); conDetalle = true; }
+      for (const m of [].concat(d.motivos_nok || [], s.motivos_nok || [])) {
+        suma(typeof m === 'string' ? m : (m.motivo || m.descripcion || ''));
+        conDetalle = true;
+      }
+    } catch (e) { /* sin detalle en el servidor */ }
+    if (!conDetalle) suma('Sin detalle registrado');
+  }));
+  paretoNok = Object.entries(causas).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  renderPareto();
+}
+
+function renderPareto() {
+  const sec = document.getElementById('dash-pareto-sec');
+  const cont = document.getElementById('dash-pareto');
+  if (!paretoNok || !paretoNok.length) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  const maxV = Math.max(1, ...paretoNok.map(c => c[1]));
+  const total = paretoNok.reduce((a, c) => a + c[1], 0);
+  cont.innerHTML = paretoNok.map(([causa, n]) => `
+    <div class="dash-barra">
+      <span title="${esc(causa)}">${esc(causa)}</span>
+      <div class="db-track"><div class="db-fill" style="width:${(n / maxV * 100).toFixed(0)}%;background:var(--red)"></div></div>
+      <b>${n}</b>
+    </div>`).join('') +
+    '<div class="form-hint" style="margin-top:8px">Causa dominante: <b>' + esc(paretoNok[0][0]) + '</b> (' +
+    Math.round(paretoNok[0][1] / total * 100) + ' % de los fallos detectados hoy)</div>';
 }
 
 // ── ÚLTIMOS DÍAS (OK/NOK por día desde /alerts/sequences, 7/14/30) ──
@@ -4006,8 +4109,31 @@ function generarPdf(analisis) {
     return o + 'Q ';
   });
 
+  // Causas de NOK (Pareto) si el panel ya las ha calculado
+  if (Array.isArray(paretoNok) && paretoNok.length) {
+    const maxC = Math.max(1, ...paretoNok.map(c => c[1]));
+    seccion('Causas de NOK - hoy', 8 + paretoNok.length * 17, yTop => {
+      const xB = M + 190, ancho = W - M - xB - 30, alto = 9;
+      let o = 'q ';
+      paretoNok.forEach(([causa, n], i) => {
+        const yy = yTop - 6 - i * 17;
+        o += textoOp(limpiar(causa).slice(0, 42), M, yy - 2, 8.5, NEGRO) +
+          CLARO + ' rg ' + num(xB) + ' ' + num(yy - 4) + ' ' + num(ancho) + ' ' + alto + ' re f ' +
+          ROJO + ' rg ' + num(xB) + ' ' + num(yy - 4) + ' ' + num(Math.max(ancho * n / maxC, 2)) + ' ' + alto + ' re f ' +
+          textoOp(String(n), xB + ancho + 8, yy - 2, 9, NEGRO, true);
+      });
+      return o + 'Q ';
+    });
+  }
+
   titulo('Analisis del turno (IA)');
   parrafo(analisis, { s: 10, adv: 14 });
+
+  const notasPdf = getNotas();
+  if (notasPdf) {
+    titulo('Notas del turno');
+    parrafo(notasPdf, { s: 10, adv: 14 });
+  }
 
   const seqs = Array.isArray(lastSeqs) ? lastSeqs : [];
   if (seqs.length) {
@@ -4102,6 +4228,7 @@ async function informeTurno() {
     <tr><td>${esc(p.planificadas ?? '—')}</td><td>${esc(p.completadas ?? '—')}</td><td class="pr-ok">${esc(p.ok ?? '—')}</td><td class="pr-nok">${esc(p.nok ?? '—')}</td><td>${p.desviacion_pct != null ? esc((p.desviacion_pct > 0 ? '+' : '') + p.desviacion_pct.toFixed(1) + ' %') : '—'}</td></tr></table>
     <h2>Análisis del turno (IA)</h2>
     <p style="line-height:1.55">${esc(analisis)}</p>
+    ${getNotas() ? `<h2>Notas del turno</h2><p style="line-height:1.55">${esc(getNotas())}</p>` : ''}
     ${seqs.length ? `<h2>Secuencias del día</h2>
     <table><tr><th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>Resultado</th><th>Operario</th></tr>
     ${seqs.map(s => `<tr><td>${esc(s.secuencia ?? '—')}</td><td>${esc(seqBastidor(s))}</td><td>${esc(s.modelo ?? s.descripcion ?? '—')}</td><td class="${estadoCls(s)}">${estadoTxt(s)}</td><td>${esc(s.operario ?? '—')}</td></tr>`).join('')}</table>` : ''}
@@ -4248,12 +4375,25 @@ async function installApp() {
   document.getElementById('btn-install').style.display = 'none';
 }
 
+// ── NOTAS DEL TURNO (por máquina y día, en este dispositivo) ──
+function notasKey() { return 'ln_notas_' + (cfg().machine || '') + '_' + ymd(new Date()); }
+function getNotas() { try { return (localStorage.getItem(notasKey()) || '').trim(); } catch (e) { return ''; } }
+
+document.getElementById('notas-turno').addEventListener('input', e => {
+  try { localStorage.setItem(notasKey(), e.target.value); } catch (err) {}
+});
+
+function cargarNotas() {
+  document.getElementById('notas-turno').value = getNotas();
+}
+
 // ── COMPARTIR RESUMEN DEL TURNO ──
 function resumenTexto() {
   const k = lastKpi;
   if (!k) return null;
   const p = k.plan || {};
   const nokSeqs = Array.isArray(lastSeqs) ? lastSeqs.filter(x => seqEstado(x) === 'nok') : [];
+  const notas = getNotas();
   return [
     'LOGISNEXT · ' + (k.machine_id || '') + (k.shift_label ? ' · Turno ' + k.shift_label : ''),
     'OEE ' + fmtPct(k.oee) + ' — Disp. ' + fmtPct(k.availability) +
@@ -4262,8 +4402,9 @@ function resumenTexto() {
       ' · ' + (p.ok ?? '—') + ' OK · ' + (p.nok ?? '—') + ' NOK',
     nokSeqs.length ? 'Bastidores NOK: ' + nokSeqs.map(x => seqBastidor(x)).join(', ') : 'Sin bastidores NOK',
     'Alertas activas: ' + ((k.alerts || []).length),
+    notas ? 'NOTAS DEL TURNO: ' + notas : null,
     new Date().toLocaleString('es-ES'),
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function asuntoCorreo() {
