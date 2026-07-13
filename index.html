@@ -1270,8 +1270,8 @@
     <div class="login-logo">Logisnext</div>
     <div class="login-sub">JAULA — Centro de alertas</div>
     <div class="form-group">
-      <label for="login-correo">Correo</label>
-      <input type="email" id="login-correo" placeholder="usuario@logisnext.com" inputmode="email" autocapitalize="off" autocomplete="username" required>
+      <label for="login-correo">Usuario o correo</label>
+      <input type="text" id="login-correo" placeholder="usuario o correo" autocapitalize="off" autocomplete="username" required>
     </div>
     <div class="form-group">
       <label for="login-password">Contraseña</label>
@@ -1474,8 +1474,7 @@
       <button class="btn" onclick="informeTurno()" style="margin-top:2px">🖨 Informe del turno (imprimir / PDF)</button>
       <button class="btn" onclick="enviarCorreo()" style="margin-top:2px">📧 Enviar por correo</button>
       <button class="btn danger" onclick="descargarPdf()" style="margin-top:2px">⬇ Descargar el informe (PDF)</button>
-      <button class="btn danger" id="btn-voz" onclick="escucharResumen()" style="margin-top:2px">🔊 Escuchar el resumen</button>
-      <div class="form-hint" style="text-align:center">Comparte por WhatsApp, genera el informe en PDF, envíalo por correo o escúchalo con manos libres.</div>
+      <div class="form-hint" style="text-align:center">Comparte por WhatsApp, genera el informe en PDF o envíalo por correo.</div>
     </section>
   </div>
 
@@ -4613,36 +4612,6 @@ async function descargarPdf() {
   showToast('📄 Informe descargado');
 }
 
-// ── ESCUCHAR EL RESUMEN (voz, manos libres en planta) ──
-let hablando = false;
-
-function escucharResumen() {
-  const btn = document.getElementById('btn-voz');
-  if (!('speechSynthesis' in window)) { showToast('Este navegador no soporta la lectura por voz'); return; }
-  if (hablando) {
-    speechSynthesis.cancel();
-    hablando = false;
-    btn.textContent = '🔊 Escuchar el resumen';
-    return;
-  }
-  const base = resumenTexto();
-  if (!base) { showToast('Aún no hay datos del servidor'); return; }
-  const texto = (base + '. ' + analisisLocal())
-    .replace(/[·—–]/g, ', ')
-    .replace(/%/g, ' por ciento')
-    .replace(/\bOEE\b/g, 'o e e')
-    .replace(/\bNOK\b/g, 'no ok')
-    .replace(/\n+/g, '. ');
-  const u = new SpeechSynthesisUtterance(texto);
-  u.lang = 'es-ES';
-  u.rate = 1.04;
-  u.onend = u.onerror = () => { hablando = false; btn.textContent = '🔊 Escuchar el resumen'; };
-  hablando = true;
-  btn.textContent = '⏹ Parar la lectura';
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-}
-
 // ── NAVEGACIÓN DESLIZANDO ENTRE PESTAÑAS ──
 (function () {
   let x0 = null, y0 = null;
@@ -4789,9 +4758,13 @@ function openOeeSheet() {
   updateThemeUI();
   const c = cfg();
   // Corrige instalaciones antiguas que se autoconfiguraron con el propio
-  // origen de la app (Vercel), que nunca es el backend real.
+  // origen de la app (Vercel), que nunca es el backend real. Además, si
+  // quedó guardado un túnel de Cloudflare viejo (que ya no existe tras
+  // reiniciarse), lo sustituye por el túnel actual por defecto para que el
+  // dispositivo se reconecte solo sin tener que pegar la URL a mano.
   let url = c.url;
-  if (!url || url === location.origin.replace(/\/+$/, '')) {
+  const tunelViejo = /\.trycloudflare\.com$/.test(url) && url !== DEFAULT_SERVER_URL;
+  if (!url || url === location.origin.replace(/\/+$/, '') || tunelViejo) {
     url = DEFAULT_SERVER_URL;
     localStorage.setItem('ln_url', url);
   }
