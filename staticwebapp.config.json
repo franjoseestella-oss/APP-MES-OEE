@@ -1,0 +1,20 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/*.{svg,png,ico,json,js,css,webmanifest}"]
+  },
+  "routes": [
+    {
+      "route": "/sw.js",
+      "headers": { "Cache-Control": "no-cache" }
+    },
+    {
+      "route": "/manifest.json",
+      "headers": { "Cache-Control": "no-cache" }
+    }
+  ],
+  "mimeTypes": {
+    ".json": "application/json",
+    ".svg": "image/svg+xml"
+  }
+}
