@@ -1651,7 +1651,8 @@
       <div class="sec-title">Notificaciones</div>
       <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
       <div class="test-result" id="push-result" role="status"></div>
-      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, aunque tengas la app cerrada. La primera vez el navegador te pedirá permiso para notificaciones.</div>
+      <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar notificación</button>
+      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso. Con «Probar» verás al momento cómo llega.</div>
       <button class="btn" id="btn-avisos" onclick="toggleAvisos()" style="margin-top:14px">Activar sonido y vibración</button>
       <div class="form-hint">Con la app abierta, pita y vibra cuando aparece una alarma activa nueva de mantenimiento.</div>
     </section>
@@ -2888,9 +2889,12 @@ function renderMaintenanceCounts(m) {
   const badge = document.getElementById('badge-mant');
   badge.textContent = m.total_activas || '';
   badge.classList.toggle('zero', m.total_activas === 0);
-  if (prevActivas !== null && m.total_activas > prevActivas && avisosOn()) {
-    beep();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  if (prevActivas !== null && m.total_activas > prevActivas) {
+    if (avisosOn()) {
+      beep();
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    }
+    notificarAlarmaLocal((m.alarmas || []).find(a => a.activa));
   }
   prevActivas = m.total_activas;
   mantBadgeN = m.total_activas || 0;
@@ -3202,6 +3206,8 @@ async function registerServiceWorker() {
   return navigator.serviceWorker.register('sw.js');
 }
 
+let pushActiva = false;
+
 async function updatePushStatusUI() {
   const btn = document.getElementById('btn-push');
   const res = document.getElementById('push-result');
@@ -3212,6 +3218,7 @@ async function updatePushStatusUI() {
   }
   const reg = await navigator.serviceWorker.ready.catch(() => null);
   const sub = reg ? await reg.pushManager.getSubscription() : null;
+  pushActiva = !!sub;
   if (sub) {
     btn.textContent = 'Desactivar notificaciones push';
     res.textContent = '✔ Notificaciones activadas en este dispositivo';
@@ -3221,6 +3228,40 @@ async function updatePushStatusUI() {
     res.textContent = '';
     res.className = 'test-result';
   }
+}
+
+// Muestra una notificación local de prueba para ver cómo llegan los avisos
+async function probarNotificacion() {
+  if (!('Notification' in window)) { showToast('Este navegador no soporta notificaciones'); return; }
+  const permiso = await Notification.requestPermission();
+  if (permiso !== 'granted') { showToast('Permiso de notificaciones denegado'); return; }
+  const reg = await navigator.serviceWorker.ready.catch(() => null);
+  if (!reg) { showToast('El service worker aún no está listo'); return; }
+  await reg.showNotification('⚠ Alarma activa (prueba)', {
+    body: 'Así llegarán los avisos de alarmas de mantenimiento. Todo listo ✔',
+    icon: 'icon.svg',
+    badge: 'icon.svg',
+    tag: 'prueba',
+    vibrate: [200, 100, 200],
+  });
+  showToast('🔔 Notificación de prueba enviada');
+}
+
+// Notificación local cuando salta una alarma nueva con la app abierta y sin push
+async function notificarAlarmaLocal(alarma) {
+  try {
+    if (pushActiva || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker.ready.catch(() => null);
+    if (!reg) return;
+    reg.showNotification('⚠ ' + (alarma?.tipo || 'Alarma') + ' activa', {
+      body: alarma?.descripcion || 'Nueva alarma de mantenimiento',
+      icon: 'icon.svg',
+      badge: 'icon.svg',
+      tag: 'alarma-local',
+      renotify: true,
+      vibrate: [200, 100, 200],
+    });
+  } catch (e) { /* sin permiso o sin SW */ }
 }
 
 async function togglePush() {
