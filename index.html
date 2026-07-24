@@ -1716,7 +1716,8 @@
         <div style="font-size:12px;color:var(--label);line-height:1.6;margin-top:6px">
           Los datos se actualizan automáticamente cada 30 segundos
           (en pausa cuando la app está en segundo plano).<br>
-          Para instalar: menú del navegador → «Añadir a pantalla de inicio».
+          Para instalar: menú del navegador → «Añadir a pantalla de inicio».<br>
+          Versión de la app: <b id="app-version">—</b>
         </div>
       </div>
       <div class="last-update" id="last-update">—</div>
@@ -3318,12 +3319,30 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
+const APP_VERSION = 'v12';
+(function () {
+  const el = document.getElementById('app-version');
+  if (el) el.textContent = APP_VERSION;
+})();
+
 if ('serviceWorker' in navigator) {
   let teniaControlador = !!navigator.serviceWorker.controller;
+  let recargando = false;
+  // Cuando el service worker nuevo toma el control, recargamos para mostrar la
+  // versión nueva (antes solo avisaba y la pantalla se quedaba con el HTML viejo).
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (teniaControlador) showToast('✨ Aplicación actualizada a la última versión');
+    if (teniaControlador && !recargando) {
+      recargando = true;
+      location.reload();
+    }
     teniaControlador = true;
   });
+  // Registrar siempre al arrancar y comprobar actualizaciones (también al volver
+  // la app a primer plano), no solo al activar las notificaciones push.
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.update();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
 }
 
 function bindFilter(rowId, apply) {
