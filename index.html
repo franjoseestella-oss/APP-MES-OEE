@@ -2240,11 +2240,25 @@ function renderPlanDias() {
   }).join('');
 }
 
-function renderSeqList(kpi, plan) {
+// "Secuencias de hoy": se alimenta de /sequences filtrado a HOY (coincide con Grafana),
+// no de kpi.secuencias del /summary (que devuelve otro conjunto). Si /sequences falla,
+// respaldo a lo que venga en el resumen para no dejar la lista vacía sin conexión.
+async function renderSeqList(kpi, plan) {
+  let seqs = null;
+  if (getSession()) {
+    try {
+      const hoy = new Date();
+      const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(hoy) });
+      if (Array.isArray(data.secuencias)) seqs = data.secuencias;
+    } catch (e) { /* respaldo abajo */ }
+  }
+  if (!Array.isArray(seqs)) seqs = kpi.secuencias ?? plan.secuencias ?? null;
+  pintarSeqList(Array.isArray(seqs) ? ordenarPlan(seqs) : seqs);
+}
+
+function pintarSeqList(seqs) {
   const cont = document.getElementById('seq-list');
   const title = document.getElementById('seq-sec-title');
-  const seqsRaw = kpi.secuencias ?? plan.secuencias ?? null;
-  const seqs = Array.isArray(seqsRaw) ? ordenarPlan(seqsRaw) : seqsRaw;
   lastSeqs = Array.isArray(seqs) ? seqs : null;
   renderCarretillas(lastSeqs);
   renderCalidad();
@@ -2291,7 +2305,7 @@ function renderSeqList(kpi, plan) {
 }
 
 document.getElementById('seq-search').addEventListener('input', () => {
-  if (lastKpi) renderSeqList(lastKpi, lastKpi.plan || {});
+  if (Array.isArray(lastSeqs)) pintarSeqList(lastSeqs); // re-filtra sin volver a pedir datos
 });
 
 // ── BOTTOM SHEET ──
