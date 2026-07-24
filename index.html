@@ -1728,6 +1728,12 @@
       <div class="last-update" id="last-update">—</div>
     </section>
     <section>
+      <div class="sec-title">Diagnóstico del plan</div>
+      <button class="btn" onclick="diagPlan()">🔧 Ver datos crudos del plan</button>
+      <div class="form-hint">Consulta cada endpoint del backend y muestra qué secuencias devuelve y con qué campos. Hazle una captura y pásamela para cuadrar el listado con Grafana.</div>
+      <pre id="diag-out" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--card-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:10px;max-height:50vh;overflow:auto"></pre>
+    </section>
+    <section>
       <div class="sec-title">Sesión</div>
       <div class="tile st-none">
         <div class="t-label">Conectado como</div>
@@ -2274,6 +2280,37 @@ function segAHora(sec) {
   const p = x => String(x).padStart(2, '0');
   return p(Math.floor(sec / 3600)) + ':' + p(Math.floor((sec % 3600) / 60)) + ':' + p(sec % 60);
 }
+// Diagnóstico: compara qué devuelve cada endpoint del plan (para cuadrar con Grafana)
+async function diagPlan() {
+  const out = document.getElementById('diag-out');
+  out.textContent = 'Consultando…';
+  const hoy = ymd(new Date());
+  const machine = cfg().machine;
+  const pruebas = [
+    ['alerts/sequences?fecha=hoy', () => api('/sequences', { fecha: hoy })],
+    ['alerts/sequences?desde=hasta=hoy', () => api('/sequences', { desde: hoy, hasta: hoy })],
+    ['plan/sequences?fecha=hoy', () => apiV1('/plan/sequences', { fecha: hoy }).then(a => ({ secuencias: a }))],
+    ['summary kpi.secuencias', () => api('/summary', { machine_id: machine }).then(r => ({ secuencias: r.kpi && r.kpi.secuencias }))],
+  ];
+  let txt = 'HOY = ' + hoy + '\n\n';
+  for (const [label, fn] of pruebas) {
+    try {
+      const r = await fn();
+      const arr = Array.isArray(r.secuencias) ? r.secuencias : (Array.isArray(r) ? r : []);
+      const secs = arr.map(x => x && x.secuencia).join(', ');
+      const keys = arr.length ? Object.keys(arr[0]).join(', ') : '(vacío)';
+      txt += '● ' + label + '  (' + arr.length + ' filas)\n  sec: ' + secs + '\n  campos: ' + keys + '\n\n';
+    } catch (e) {
+      txt += '● ' + label + '  ERROR: ' + e.message + '\n\n';
+    }
+  }
+  try {
+    const pv = await apiV1('/plan/vs-real', { fecha: hoy });
+    txt += '● plan/vs-real: inicio_turno=' + pv.inicio_turno + '  fin_turno=' + pv.fin_turno + '  planificadas=' + pv.planificadas_turno + '\n';
+  } catch (e) { txt += '● plan/vs-real ERROR: ' + e.message + '\n'; }
+  out.textContent = txt;
+}
+
 async function cargarTaktTurno(fecha) {
   taktSeg = turnoIniSeg = null;
   try {
@@ -3391,7 +3428,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
