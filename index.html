@@ -610,19 +610,24 @@
   .pd-head .pd-count { color: var(--label); font-size: 12px; margin-left: auto; }
   .pd-head .pd-caret { color: var(--label); transition: transform 0.2s ease; }
   .pd-dia.open .pd-head .pd-caret { transform: rotate(90deg); }
-  .pd-filas { display: none; padding: 0 12px 8px; }
+  .pd-filas { display: none; padding: 0 10px 10px; }
   .pd-dia.open .pd-filas { display: block; }
-  .pd-fila {
-    display: grid; grid-template-columns: 46px 46px 1fr auto; align-items: center; gap: 8px;
-    padding: 7px 0; border-top: 1px solid var(--border); font-size: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-  .pd-fila .pd-hora { color: var(--label); }
-  .pd-fila .pd-sec { color: var(--brand-ink); font-weight: 700; }
-  .pd-fila .pd-bast { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pd-fila .pd-mod { color: var(--label); text-align: right; }
-  .pd-fila.pd-done .pd-sec { color: var(--green); }
-  .pd-fila.pd-nok  .pd-sec { color: var(--red); }
+  /* Tabla estilo Grafana, desplazable en horizontal en móvil */
+  .pd-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
+  .pd-table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pd-table th, .pd-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .pd-table thead th { color: var(--label); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; background: var(--card); }
+  .pd-table .c-sec { font-weight: 800; color: var(--brand-ink); }
+  .pd-table .c-bast { font-weight: 600; }
+  .pd-table .c-real { color: var(--label); }
+  /* Color de fila por estado (verde OK, rojo NOK, amarillo en curso) */
+  .pd-row.pd-done { background: rgba(31,138,76,0.13); }
+  .pd-row.pd-done .c-sec { color: var(--green); }
+  .pd-row.pd-nok  { background: rgba(214,58,69,0.15); }
+  .pd-row.pd-nok  .c-sec { color: var(--red); }
+  .pd-row.pd-curso { background: rgba(242,183,5,0.20); }
+  .pd-row.pd-curso .c-sec { color: #a37500; }
+  .pd-row.pd-curso td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
 
   /* ── ESCÁNER DE CÓDIGO DE BARRAS ── */
   .scan-modal {
@@ -2201,7 +2206,7 @@ async function cargarPlanDias(kpi, plan) {
   if (Array.isArray(seqs7)) {
     const porDia = {};
     for (const s of seqs7) {
-      const f = String(s.fecha || '').slice(0, 10);
+      const f = fechaKey(seqFechaMontaje(s)); // agrupamos por Fecha Montaje, como Grafana
       if (!f) continue;
       (porDia[f] = porDia[f] || []).push(s);
     }
@@ -2212,7 +2217,7 @@ async function cargarPlanDias(kpi, plan) {
     renderPlanDias();
     // "Secuencias de hoy" = el grupo de hoy de este mismo listado
     const hk = ymd(new Date());
-    const hoyGrupo = planDias.find(d => d.f.replace(/-/g, '').slice(0, 8) === hk);
+    const hoyGrupo = planDias.find(d => d.f === hk);
     pintarSeqList(hoyGrupo ? hoyGrupo.seqs : []);
   } else {
     // Sin /sequences (p. ej. sin conexión): ocultamos el listado por día y usamos
@@ -2222,34 +2227,72 @@ async function cargarPlanDias(kpi, plan) {
     pintarSeqList(Array.isArray(resp) ? ordenarPlan(resp) : null);
   }
 }
-function fmtDia(f) {
-  const p = f.split('-'); // "2026-07-24" → "24/07"
-  return p.length === 3 ? p[2] + '/' + p[1] : f;
+// Fecha en formato español "24/07/2026" a partir de "2026-07-24", "20260724",
+// "2026-07-24T…" o "24/07/2026" (lo que mande el backend).
+function fmtFechaES(v) {
+  if (!v) return '—';
+  const s = String(v);
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return s; // ya viene dd/mm/aaaa
+  const d = s.replace(/\D/g, '');
+  if (d.length >= 8) return d.slice(6, 8) + '/' + d.slice(4, 6) + '/' + d.slice(0, 4);
+  return s;
 }
+// Clave de día YYYYMMDD a partir de "2026-07-24", "20260724" o "24/07/2026"
+function fechaKey(v) {
+  const s = String(v || '');
+  let m = s.match(/^(\d{4})\D?(\d{2})\D?(\d{2})/);   // 2026-07-24 / 20260724 / 2026-07-24T…
+  if (m) return m[1] + m[2] + m[3];
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);      // 24/07/2026
+  if (m) return m[3] + m[2].padStart(2, '0') + m[1].padStart(2, '0');
+  return s.replace(/\D/g, '').slice(0, 8);
+}
+// Primer valor no vacío entre varios nombres de campo posibles
+function pick(s, keys) {
+  for (const k of keys) { const v = s[k]; if (v !== null && v !== undefined && v !== '') return v; }
+  return null;
+}
+function seqMastil(s)      { return pick(s, ['mastil', 'mástil', 'tipo_mastil']); }
+function seqFechaMontaje(s){ return pick(s, ['fecha_montaje', 'fechaMontaje', 'fecha']); }
+function seqIniTeorico(s)  { return pick(s, ['inicio_planificado', 'inicio_teorico', 'hora_inicio', 'inicio']); }
+function seqFinTeorico(s)  { return pick(s, ['fin_planificado', 'fin_teorico', 'hora_fin', 'fin']); }
+function seqIniReal(s)     { return pick(s, ['inicio_real', 'hora_inicio_real', 'real_inicio', 'inicio_realizado']); }
+function seqFinReal(s)     { return pick(s, ['fin_real', 'hora_fin_real', 'real_fin', 'fin_realizado']); }
+
 function renderPlanDias() {
   const cont = document.getElementById('plandias-list');
   if (!planDias || !planDias.length) {
     cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas en los próximos días.</div>';
     return;
   }
+  const h = v => esc(fmtHora(v) || '—');
   cont.innerHTML = planDias.map((dia, idx) => {
     const filas = dia.seqs.map(s => {
       const st = seqEstado(s);
-      const hora = fmtHora(s.hora_inicio ?? s.inicio) || '—';
-      return `<div class="pd-fila pd-${st}">
-        <span class="pd-hora">${esc(hora)}</span>
-        <span class="pd-sec">${esc(s.secuencia ?? '—')}</span>
-        <span class="pd-bast">${esc(seqBastidor(s))}</span>
-        <span class="pd-mod">${esc(seqModelo(s))}</span>
-      </div>`;
+      return `<tr class="pd-row pd-${st}">
+        <td class="c-sec">${esc(s.secuencia ?? '—')}</td>
+        <td class="c-bast">${esc(seqBastidor(s))}</td>
+        <td>${esc(seqModelo(s))}</td>
+        <td>${esc(fmtFechaES(seqFechaMontaje(s)))}</td>
+        <td>${esc(seqMastil(s) ?? '—')}</td>
+        <td>${h(seqIniTeorico(s))}</td>
+        <td>${h(seqFinTeorico(s))}</td>
+        <td class="c-real">${h(seqIniReal(s))}</td>
+        <td class="c-real">${h(seqFinReal(s))}</td>
+      </tr>`;
     }).join('');
     return `<div class="pd-dia ${idx === 0 ? 'open' : ''}">
       <button class="pd-head" type="button" onclick="this.parentElement.classList.toggle('open')">
-        <span class="pd-fecha">${fmtDia(dia.f)}</span>
+        <span class="pd-fecha">${fmtFechaES(dia.f)}</span>
         <span class="pd-count">${dia.seqs.length} carretillas</span>
         <span class="pd-caret">▸</span>
       </button>
-      <div class="pd-filas">${filas}</div>
+      <div class="pd-filas"><div class="pd-tablewrap"><table class="pd-table">
+        <thead><tr>
+          <th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>F. Montaje</th><th>Mástil</th>
+          <th>Ini. teór.</th><th>Fin teór.</th><th>Ini. real</th><th>Fin real</th>
+        </tr></thead>
+        <tbody>${filas}</tbody>
+      </table></div></div>
     </div>`;
   }).join('');
 }
@@ -3317,7 +3360,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
