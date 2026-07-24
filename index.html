@@ -497,7 +497,7 @@
   }
   .seq-card.sq-done  { border-left-color: var(--green); }
   .seq-card.sq-nok   { border-left-color: var(--red); }
-  .seq-card.sq-curso { border-left-color: var(--cyan); background: linear-gradient(160deg, rgba(30,136,150,0.06), var(--card)); }
+  .seq-card.sq-curso { border-left-color: #ff8a00; background: linear-gradient(160deg, rgba(255,138,0,0.09), var(--card)); }
   .seq-card.sq-pend  { border-left-color: var(--border-2); opacity: 0.8; }
   .sq-code {
     font-size: 12px;
@@ -625,9 +625,14 @@
   .pd-row.pd-done .c-sec { color: var(--green); }
   .pd-row.pd-nok  { background: rgba(214,58,69,0.15); }
   .pd-row.pd-nok  .c-sec { color: var(--red); }
-  .pd-row.pd-curso { background: rgba(242,183,5,0.20); }
-  .pd-row.pd-curso .c-sec { color: #a37500; }
-  .pd-row.pd-curso td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
+  .pd-row.pd-curso { background: rgba(255,138,0,0.18); }
+  .pd-row.pd-curso .c-sec { color: #c25e00; }
+  .pd-row.pd-curso td:first-child { box-shadow: inset 3px 0 0 #ff8a00; }
+  .pd-estado { font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .pd-e-done  { color: var(--green); background: rgba(31,138,76,0.15); }
+  .pd-e-nok   { color: var(--red);   background: rgba(214,58,69,0.15); }
+  .pd-e-curso { color: #c25e00;      background: rgba(255,138,0,0.20); }
+  .pd-e-pend  { color: var(--label); background: rgba(127,127,127,0.15); }
 
   /* ── ESCÁNER DE CÓDIGO DE BARRAS ── */
   .scan-modal {
@@ -2145,7 +2150,7 @@ function seqEstado(s) {
   const e = String(s.estado ?? '').toLowerCase();
   if (e === 'ok') return 'done';
   if (e === 'nok') return 'nok';
-  if (e.includes('curso')) return 'curso';
+  if (e.includes('curso') || e.includes('proces')) return 'curso';
   const completada = e.includes('complet') || e.includes('cerrad') || e.includes('finaliz') || s.completada;
   if (completada) return (s.nok > 0) ? 'nok' : 'done';
   return 'pend';
@@ -2205,10 +2210,9 @@ function renderCarretillas(seqs) {
     </div>`).join('');
 }
 
-// Pide al backend el plan de CADA día por separado con /sequences?fecha=<día>
-// (el mismo criterio que Grafana). Así no agrupamos por fecha de montaje: cada
-// día devuelve exactamente sus secuencias (hoy empieza en 0227). Alimenta las dos
-// secciones: "Carretillas por día" (todos los días) y "Secuencias de hoy".
+// Plan estilo Grafana desde /api/v1/plan/board: una llamada por semana, agrupada
+// por día. Cada fila trae horas planificadas (con descansos del turno), horas
+// reales, desviación y estado, y el plan arranca donde Grafana (0227).
 let planDias = null;
 async function cargarPlanDias(kpi, plan) {
   const respaldo = () => {
@@ -2219,16 +2223,19 @@ async function cargarPlanDias(kpi, plan) {
   if (!getSession()) { respaldo(); return; }
 
   const hoy = new Date();
-  const dias = [];
-  for (let i = 0; i < 7; i++) { const d = new Date(); d.setDate(hoy.getDate() + i); dias.push(ymd(d)); }
+  const fin = new Date(); fin.setDate(hoy.getDate() + 6);
   try {
-    const res = await Promise.all(dias.map(f =>
-      api('/sequences', { fecha: f })
-        .then(r => ({ f, seqs: Array.isArray(r.secuencias) ? r.secuencias : [] }))
-        .catch(() => ({ f, seqs: [] }))
-    ));
-    planDias = res.filter(r => r.seqs.length).map(r => ({ f: r.f, seqs: ordenarPlan(r.seqs) }));
-    await cargarTaktTurno(ymd(hoy)); // horas planificadas del turno (mismo takt para todos los días)
+    const data = await apiV1('/plan/board', { desde: ymd(hoy), hasta: ymd(fin) });
+    const rows = Array.isArray(data.secuencias) ? data.secuencias : [];
+    const porDia = {};
+    for (const r of rows) {
+      const f = r.planned_key || fechaKey(r.fecha_montaje);
+      if (!f) continue;
+      (porDia[f] = porDia[f] || []).push(r);
+    }
+    planDias = Object.entries(porDia)
+      .map(([f, arr]) => ({ f, seqs: arr }))       // /board ya viene ordenado por hueco
+      .sort((a, b) => a.f.localeCompare(b.f));
     document.getElementById('plandias-sec').style.display = planDias.length ? '' : 'none';
     renderPlanDias();
     const hoyGrupo = planDias.find(d => d.f === ymd(hoy));
@@ -2326,38 +2333,51 @@ async function cargarTaktTurno(fecha) {
   } catch (e) { /* sin horas: las columnas saldrán con — */ }
 }
 
+// Estado del backend ("OK"/"NOK"/"Procesando"/"Pendiente") → clase de color
+function boardEstado(r) {
+  const e = String(r.estado || '').toLowerCase();
+  if (e === 'ok') return 'done';
+  if (e === 'nok') return 'nok';
+  if (e.includes('proces') || e.includes('curso')) return 'curso';
+  return 'pend';
+}
+const PD_ESTADO_TXT = { done: 'OK', nok: 'NOK', curso: 'En curso', pend: 'Pendiente' };
+
 function renderPlanDias() {
   const cont = document.getElementById('plandias-list');
   if (!planDias || !planDias.length) {
     cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas en los próximos días.</div>';
     return;
   }
-  const hayTakt = taktSeg != null && turnoIniSeg != null;
+  const cel = v => esc((v === null || v === undefined || v === '') ? '—' : v);
   cont.innerHTML = planDias.map((dia, idx) => {
-    const filas = dia.seqs.map((s, i) => {
-      const st = seqEstado(s);
-      const iniP = hayTakt ? segAHora(turnoIniSeg + i * taktSeg) : '—';
-      const finP = hayTakt ? segAHora(turnoIniSeg + (i + 1) * taktSeg) : '—';
+    const filas = dia.seqs.map(r => {
+      const st = boardEstado(r);
       return `<tr class="pd-row pd-${st}">
-        <td class="c-sec">${esc(s.secuencia ?? '—')}</td>
-        <td class="c-bast">${esc(seqBastidor(s))}</td>
-        <td>${esc(seqModelo(s))}</td>
-        <td>${esc(fmtFechaES(seqFechaMontaje(s)))}</td>
-        <td>${esc(seqMastil(s) ?? '—')}</td>
-        <td>${iniP}</td>
-        <td>${finP}</td>
+        <td class="c-sec">${cel(r.secuencia)}</td>
+        <td class="c-bast">${cel(r.bastidor)}</td>
+        <td>${cel(r.modelo)}</td>
+        <td>${cel(r.fecha_montaje)}</td>
+        <td>${cel(r.mastil)}</td>
+        <td>${cel(r.inicio_planificado)}</td>
+        <td>${cel(r.fin_planificado)}</td>
+        <td class="c-real">${cel(r.inicio_real)}</td>
+        <td class="c-real">${cel(r.fin_real)}</td>
+        <td>${cel(r.desviacion)}</td>
+        <td><span class="pd-estado pd-e-${st}">${PD_ESTADO_TXT[st]}</span></td>
       </tr>`;
     }).join('');
+    const hechas = dia.seqs.filter(r => ['done', 'nok'].includes(boardEstado(r))).length;
     return `<div class="pd-dia ${idx === 0 ? 'open' : ''}">
       <button class="pd-head" type="button" onclick="this.parentElement.classList.toggle('open')">
         <span class="pd-fecha">${fmtFechaES(dia.f)}</span>
-        <span class="pd-count">${dia.seqs.length} carretillas</span>
+        <span class="pd-count">${hechas}/${dia.seqs.length} carretillas</span>
         <span class="pd-caret">▸</span>
       </button>
       <div class="pd-filas"><div class="pd-tablewrap"><table class="pd-table">
         <thead><tr>
           <th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>F. Montaje</th><th>Mástil</th>
-          <th>Ini. planif.</th><th>Fin planif.</th>
+          <th>Ini. plan.</th><th>Fin plan.</th><th>Ini. real</th><th>Fin real</th><th>Desv.</th><th>Estado</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div></div>
@@ -3428,7 +3448,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
