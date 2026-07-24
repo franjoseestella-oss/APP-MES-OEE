@@ -587,6 +587,18 @@
   .sh-row .r-val { font-variant-numeric: tabular-nums; text-align: right; }
   .motivo-nok .r-val { color: var(--red); font-weight: 700; }
 
+  /* ── CARRETILLAS PLANIFICADAS POR DÍA ── */
+  .carr-list { display: flex; flex-direction: column; }
+  .carr-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-top: 1px solid var(--border); font-size: 13px;
+  }
+  .carr-row:first-child { border-top: none; }
+  .carr-row .cr-modelo { font-weight: 700; color: var(--text); min-width: 92px; }
+  .carr-row .cr-bar { flex: 1; height: 6px; background: rgba(64,86,95,0.12); border-radius: 3px; overflow: hidden; }
+  .carr-row .cr-bar > i { display: block; height: 100%; background: var(--brand); border-radius: 3px; transition: width 0.6s ease; }
+  .carr-row .cr-count { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--brand-ink); min-width: 26px; text-align: right; }
+
   /* ── ESCÁNER DE CÓDIGO DE BARRAS ── */
   .scan-modal {
     position: fixed; inset: 0;
@@ -1379,6 +1391,15 @@
       </div>
     </section>
 
+    <section id="carr-sec">
+      <div class="sec-title">Carretillas planificadas — hoy</div>
+      <div class="plan-row" style="margin-bottom:12px">
+        <div class="chip cyan"><div class="c-num" id="carr-total">—</div><div class="c-lbl">Carretillas</div></div>
+        <div class="chip cyan"><div class="c-num" id="carr-modelos">—</div><div class="c-lbl">Modelos</div></div>
+      </div>
+      <div class="carr-list" id="carr-desglose"></div>
+    </section>
+
     <section>
       <div class="sec-title" id="seq-sec-title">Secuencias de hoy</div>
       <div class="form-group" style="margin-bottom:10px">
@@ -1719,7 +1740,7 @@
     <div class="scan-corners"></div>
     <div class="scan-line"></div>
   </div>
-  <div class="scan-hint">Apunta al código de barras o QR…</div>
+  <div class="scan-hint">Apunta al código QR…</div>
   <div class="scan-manual">
     <input type="text" id="scan-code2" placeholder="…o escribe el código aquí" autocapitalize="characters" autocomplete="off">
     <button class="btn" onclick="buscarDesdeScanner()">Buscar</button>
@@ -2078,6 +2099,21 @@ function seqBastidor(s) {
   return s.bastidor ?? s.nbastidor ?? s.codigo ?? s.numero ?? s.id;
 }
 
+// Orden del plan de producción: por nº de secuencia ascendente (como en Grafana).
+// Extrae la parte numérica ("SEQ-118" → 118); si no hay, cae al final.
+function seqNumOrden(s) {
+  const raw = s.secuencia ?? s.orden ?? null;
+  if (raw !== null && raw !== undefined) {
+    const n = parseInt(String(raw).replace(/\D+/g, ''), 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+function ordenarPlan(seqs) {
+  // slice() para no mutar el array original; sort estable conserva el orden del servidor en empates
+  return seqs.slice().sort((a, b) => seqNumOrden(a) - seqNumOrden(b));
+}
+
 function fmtHora(v) {
   if (!v) return null;
   const d = new Date(v);
@@ -2085,11 +2121,41 @@ function fmtHora(v) {
   return String(v); // ya viene como "08:30"
 }
 
+// Carretillas planificadas de hoy: total + desglose por modelo (mayor a menor)
+function seqModelo(s) {
+  return s.modelo ?? s.descripcion ?? s.articulo ?? '(sin modelo)';
+}
+function renderCarretillas(seqs) {
+  const sec = document.getElementById('carr-sec');
+  const cont = document.getElementById('carr-desglose');
+  const totalEl = document.getElementById('carr-total');
+  const modelosEl = document.getElementById('carr-modelos');
+  if (!Array.isArray(seqs) || !seqs.length) {
+    totalEl.textContent = modelosEl.textContent = '—';
+    cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas para hoy.</div>';
+    return;
+  }
+  const cnt = {};
+  for (const s of seqs) { const m = String(seqModelo(s)); cnt[m] = (cnt[m] || 0) + 1; }
+  const filas = Object.entries(cnt).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const max = filas[0][1];
+  totalEl.textContent = seqs.length;
+  modelosEl.textContent = filas.length;
+  cont.innerHTML = filas.map(([m, n]) => `
+    <div class="carr-row">
+      <span class="cr-modelo">${esc(m)}</span>
+      <span class="cr-bar"><i style="width:${Math.round(n / max * 100)}%"></i></span>
+      <span class="cr-count">${n}</span>
+    </div>`).join('');
+}
+
 function renderSeqList(kpi, plan) {
   const cont = document.getElementById('seq-list');
   const title = document.getElementById('seq-sec-title');
-  const seqs = kpi.secuencias ?? plan.secuencias ?? null;
+  const seqsRaw = kpi.secuencias ?? plan.secuencias ?? null;
+  const seqs = Array.isArray(seqsRaw) ? ordenarPlan(seqsRaw) : seqsRaw;
   lastSeqs = Array.isArray(seqs) ? seqs : null;
+  renderCarretillas(lastSeqs);
   renderCalidad();
   if (!Array.isArray(seqs)) {
     title.textContent = 'Secuencias de hoy';
@@ -2465,14 +2531,10 @@ async function startScan() {
   video.srcObject = scanStream;
   document.getElementById('scan-code2').value = '';
   document.getElementById('scan-modal').classList.add('open');
-  // Códigos de barras 1D y 2D (QR, DataMatrix…): todos los que soporte el móvil
+  // Solo códigos QR: ignoramos los códigos de barras 1D/2D
   let detector;
   try {
-    const sup = await BarcodeDetector.getSupportedFormats();
-    const want = ['qr_code', 'data_matrix', 'aztec', 'pdf417', 'code_128', 'code_39',
-      'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e'];
-    const formats = want.filter(f => sup.includes(f));
-    detector = new BarcodeDetector(formats.length ? { formats } : undefined);
+    detector = new BarcodeDetector({ formats: ['qr_code'] });
   } catch (e) {
     detector = new BarcodeDetector();
   }
@@ -2480,8 +2542,9 @@ async function startScan() {
     if (!scanStream) return;
     try {
       const codes = await detector.detect(video);
-      if (codes.length) {
-        const value = codes[0].rawValue;
+      const qr = codes.find(c => c.format === 'qr_code');
+      if (qr) {
+        const value = qr.rawValue;
         stopScan();
         if (navigator.vibrate) navigator.vibrate(60);
         doBuscar(value);
@@ -2565,7 +2628,7 @@ async function cargarSecuenciasFecha() {
   document.getElementById('cal-list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
   try {
     const data = await api('/sequences', { desde: calRango.desde, hasta: calRango.hasta });
-    calSeqsFecha = Array.isArray(data.secuencias) ? data.secuencias : [];
+    calSeqsFecha = Array.isArray(data.secuencias) ? ordenarPlan(data.secuencias) : [];
   } catch (e) {
     calSeqsFecha = [];
   }
