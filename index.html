@@ -1875,6 +1875,18 @@ function api(path, params) {
   });
 }
 
+// Igual que api() pero para endpoints bajo /api/v1 que NO cuelgan de /alerts
+// (p. ej. /plan/vs-real, para las horas planificadas del turno).
+function apiV1(path, params) {
+  const { url } = cfg();
+  if (!url) return Promise.reject(new Error('Sin URL configurada'));
+  const qs = params ? '?' + new URLSearchParams(params) : '';
+  return fetch(url + '/api/v1' + path + qs, { headers: authHeaders() }).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  });
+}
+
 // ── CONFIGURACIÓN POR ENLACE (#cfg=…): configura otro móvil compartiendo un link ──
 function compartirConfig() {
   const { url, machine } = cfg();
@@ -2210,6 +2222,7 @@ async function cargarPlanDias(kpi, plan) {
         .catch(() => ({ f, seqs: [] }))
     ));
     planDias = res.filter(r => r.seqs.length).map(r => ({ f: r.f, seqs: ordenarPlan(r.seqs) }));
+    await cargarTaktTurno(ymd(hoy)); // horas planificadas del turno (mismo takt para todos los días)
     document.getElementById('plandias-sec').style.display = planDias.length ? '' : 'none';
     renderPlanDias();
     const hoyGrupo = planDias.find(d => d.f === ymd(hoy));
@@ -2249,21 +2262,53 @@ function seqFinTeorico(s)  { return pick(s, ['fin_planificado', 'fin_teorico', '
 function seqIniReal(s)     { return pick(s, ['inicio_real', 'hora_inicio_real', 'real_inicio', 'inicio_realizado']); }
 function seqFinReal(s)     { return pick(s, ['fin_real', 'hora_fin_real', 'real_fin', 'fin_realizado']); }
 
+// ── Horas planificadas estilo Grafana: turno ÷ nº planificadas = takt por unidad ──
+// Cada carretilla ocupa un hueco fijo (takt) desde el inicio del turno.
+let taktSeg = null, turnoIniSeg = null;
+function horaASeg(v) {
+  const m = String(v || '').match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)) : null;
+}
+function segAHora(sec) {
+  sec = ((Math.round(sec) % 86400) + 86400) % 86400;
+  const p = x => String(x).padStart(2, '0');
+  return p(Math.floor(sec / 3600)) + ':' + p(Math.floor((sec % 3600) / 60)) + ':' + p(sec % 60);
+}
+async function cargarTaktTurno(fecha) {
+  taktSeg = turnoIniSeg = null;
+  try {
+    const pv = await apiV1('/plan/vs-real', { fecha });
+    const ini = horaASeg(pv.inicio_turno);
+    let fin = horaASeg(pv.fin_turno);
+    const n = +pv.planificadas_turno;
+    if (ini != null && fin != null && n > 0) {
+      if (fin <= ini) fin += 86400; // turno que cruza medianoche
+      turnoIniSeg = ini;
+      taktSeg = (fin - ini) / n;
+    }
+  } catch (e) { /* sin horas: las columnas saldrán con — */ }
+}
+
 function renderPlanDias() {
   const cont = document.getElementById('plandias-list');
   if (!planDias || !planDias.length) {
     cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas en los próximos días.</div>';
     return;
   }
+  const hayTakt = taktSeg != null && turnoIniSeg != null;
   cont.innerHTML = planDias.map((dia, idx) => {
-    const filas = dia.seqs.map(s => {
+    const filas = dia.seqs.map((s, i) => {
       const st = seqEstado(s);
+      const iniP = hayTakt ? segAHora(turnoIniSeg + i * taktSeg) : '—';
+      const finP = hayTakt ? segAHora(turnoIniSeg + (i + 1) * taktSeg) : '—';
       return `<tr class="pd-row pd-${st}">
         <td class="c-sec">${esc(s.secuencia ?? '—')}</td>
         <td class="c-bast">${esc(seqBastidor(s))}</td>
         <td>${esc(seqModelo(s))}</td>
         <td>${esc(fmtFechaES(seqFechaMontaje(s)))}</td>
         <td>${esc(seqMastil(s) ?? '—')}</td>
+        <td>${iniP}</td>
+        <td>${finP}</td>
       </tr>`;
     }).join('');
     return `<div class="pd-dia ${idx === 0 ? 'open' : ''}">
@@ -2275,6 +2320,7 @@ function renderPlanDias() {
       <div class="pd-filas"><div class="pd-tablewrap"><table class="pd-table">
         <thead><tr>
           <th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>F. Montaje</th><th>Mástil</th>
+          <th>Ini. planif.</th><th>Fin planif.</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div></div>
@@ -3345,7 +3391,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
