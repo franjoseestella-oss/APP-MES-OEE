@@ -599,6 +599,31 @@
   .carr-row .cr-bar > i { display: block; height: 100%; background: var(--brand); border-radius: 3px; transition: width 0.6s ease; }
   .carr-row .cr-count { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--brand-ink); min-width: 26px; text-align: right; }
 
+  /* ── LISTADO DE CARRETILLAS POR DÍA ── */
+  .pd-dia { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; background: var(--card); }
+  .pd-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 11px 12px; background: none; border: none; cursor: pointer;
+    font: inherit; color: var(--text); text-align: left;
+  }
+  .pd-head .pd-fecha { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .pd-head .pd-count { color: var(--label); font-size: 12px; margin-left: auto; }
+  .pd-head .pd-caret { color: var(--label); transition: transform 0.2s ease; }
+  .pd-dia.open .pd-head .pd-caret { transform: rotate(90deg); }
+  .pd-filas { display: none; padding: 0 12px 8px; }
+  .pd-dia.open .pd-filas { display: block; }
+  .pd-fila {
+    display: grid; grid-template-columns: 46px 46px 1fr auto; align-items: center; gap: 8px;
+    padding: 7px 0; border-top: 1px solid var(--border); font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pd-fila .pd-hora { color: var(--label); }
+  .pd-fila .pd-sec { color: var(--brand-ink); font-weight: 700; }
+  .pd-fila .pd-bast { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pd-fila .pd-mod { color: var(--label); text-align: right; }
+  .pd-fila.pd-done .pd-sec { color: var(--green); }
+  .pd-fila.pd-nok  .pd-sec { color: var(--red); }
+
   /* ── ESCÁNER DE CÓDIGO DE BARRAS ── */
   .scan-modal {
     position: fixed; inset: 0;
@@ -1400,6 +1425,13 @@
       <div class="carr-list" id="carr-desglose"></div>
     </section>
 
+    <section id="plandias-sec">
+      <div class="sec-title">Carretillas por día</div>
+      <div id="plandias-list">
+        <div class="skel"></div><div class="skel"></div>
+      </div>
+    </section>
+
     <section>
       <div class="sec-title" id="seq-sec-title">Secuencias de hoy</div>
       <div class="form-group" style="margin-bottom:10px">
@@ -2149,6 +2181,65 @@ function renderCarretillas(seqs) {
     </div>`).join('');
 }
 
+// Listado de carretillas agrupadas por día (próximos 7 días)
+let planDias = null, planDiasTs = 0;
+async function cargarPlanDias(forzar) {
+  if (!forzar && planDias && Date.now() - planDiasTs < 300000) { renderPlanDias(); return; }
+  if (!getSession()) return;
+  const hoy = new Date();
+  const fin = new Date(); fin.setDate(hoy.getDate() + 6);
+  try {
+    const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(fin) });
+    const seqs = Array.isArray(data.secuencias) ? data.secuencias : [];
+    const porDia = {};
+    for (const s of seqs) {
+      const f = String(s.fecha || '').slice(0, 10);
+      if (!f) continue;
+      (porDia[f] = porDia[f] || []).push(s);
+    }
+    planDias = Object.entries(porDia)
+      .map(([f, arr]) => ({ f, seqs: ordenarPlan(arr) }))
+      .sort((a, b) => a.f.localeCompare(b.f));
+    planDiasTs = Date.now();
+    document.getElementById('plandias-sec').style.display = '';
+    renderPlanDias();
+  } catch (e) {
+    // Backend sin el endpoint de fechas: se oculta la sección
+    if (!planDias) document.getElementById('plandias-sec').style.display = 'none';
+  }
+}
+function fmtDia(f) {
+  const p = f.split('-'); // "2026-07-24" → "24/07"
+  return p.length === 3 ? p[2] + '/' + p[1] : f;
+}
+function renderPlanDias() {
+  const cont = document.getElementById('plandias-list');
+  if (!planDias || !planDias.length) {
+    cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas en los próximos días.</div>';
+    return;
+  }
+  cont.innerHTML = planDias.map((dia, idx) => {
+    const filas = dia.seqs.map(s => {
+      const st = seqEstado(s);
+      const hora = fmtHora(s.hora_inicio ?? s.inicio) || '—';
+      return `<div class="pd-fila pd-${st}">
+        <span class="pd-hora">${esc(hora)}</span>
+        <span class="pd-sec">${esc(s.secuencia ?? '—')}</span>
+        <span class="pd-bast">${esc(seqBastidor(s))}</span>
+        <span class="pd-mod">${esc(seqModelo(s))}</span>
+      </div>`;
+    }).join('');
+    return `<div class="pd-dia ${idx === 0 ? 'open' : ''}">
+      <button class="pd-head" type="button" onclick="this.parentElement.classList.toggle('open')">
+        <span class="pd-fecha">${fmtDia(dia.f)}</span>
+        <span class="pd-count">${dia.seqs.length} carretillas</span>
+        <span class="pd-caret">▸</span>
+      </button>
+      <div class="pd-filas">${filas}</div>
+    </div>`;
+  }).join('');
+}
+
 function renderSeqList(kpi, plan) {
   const cont = document.getElementById('seq-list');
   const title = document.getElementById('seq-sec-title');
@@ -2870,6 +2961,7 @@ function renderKpi(kpi, esCache) {
     stDesv);
 
   renderSeqList(kpi, plan);
+  cargarPlanDias(false);
 
   // Lista final: alertas del servidor (menos las de KPI personalizados) + personales
   const overridden = THR_KEYS.filter(k => thr[k].en).flatMap(k => THR_SERVER_TYPES[k]);
