@@ -2182,18 +2182,25 @@ function renderCarretillas(seqs) {
     </div>`).join('');
 }
 
-// Listado de carretillas agrupadas por día (próximos 7 días)
-let planDias = null, planDiasTs = 0;
-async function cargarPlanDias(forzar) {
-  if (!forzar && planDias && Date.now() - planDiasTs < 300000) { renderPlanDias(); return; }
-  if (!getSession()) return;
-  const hoy = new Date();
-  const fin = new Date(); fin.setDate(hoy.getDate() + 6);
-  try {
-    const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(fin) });
-    const seqs = Array.isArray(data.secuencias) ? data.secuencias : [];
+// Carga /sequences por rango de 7 días y alimenta DOS secciones desde el MISMO
+// origen (el que coincide con Grafana): "Carretillas por día" (todos los días) y
+// "Secuencias de hoy" (el grupo de hoy). Antes "Secuencias de hoy" pedía un solo
+// día (desde=hasta=hoy) y el backend respondía otro conjunto distinto.
+let planDias = null;
+async function cargarPlanDias(kpi, plan) {
+  let seqs7 = null;
+  if (getSession()) {
+    try {
+      const hoy = new Date();
+      const fin = new Date(); fin.setDate(hoy.getDate() + 6);
+      const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(fin) });
+      if (Array.isArray(data.secuencias)) seqs7 = data.secuencias;
+    } catch (e) { /* respaldo abajo */ }
+  }
+
+  if (Array.isArray(seqs7)) {
     const porDia = {};
-    for (const s of seqs) {
+    for (const s of seqs7) {
       const f = String(s.fecha || '').slice(0, 10);
       if (!f) continue;
       (porDia[f] = porDia[f] || []).push(s);
@@ -2201,12 +2208,18 @@ async function cargarPlanDias(forzar) {
     planDias = Object.entries(porDia)
       .map(([f, arr]) => ({ f, seqs: ordenarPlan(arr) }))
       .sort((a, b) => a.f.localeCompare(b.f));
-    planDiasTs = Date.now();
     document.getElementById('plandias-sec').style.display = '';
     renderPlanDias();
-  } catch (e) {
-    // Backend sin el endpoint de fechas: se oculta la sección
+    // "Secuencias de hoy" = el grupo de hoy de este mismo listado
+    const hk = ymd(new Date());
+    const hoyGrupo = planDias.find(d => d.f.replace(/-/g, '').slice(0, 8) === hk);
+    pintarSeqList(hoyGrupo ? hoyGrupo.seqs : []);
+  } else {
+    // Sin /sequences (p. ej. sin conexión): ocultamos el listado por día y usamos
+    // el resumen como respaldo para no dejar "Secuencias de hoy" vacía.
     if (!planDias) document.getElementById('plandias-sec').style.display = 'none';
+    const resp = kpi && (kpi.secuencias ?? (plan && plan.secuencias));
+    pintarSeqList(Array.isArray(resp) ? ordenarPlan(resp) : null);
   }
 }
 function fmtDia(f) {
@@ -2241,22 +2254,8 @@ function renderPlanDias() {
   }).join('');
 }
 
-// "Secuencias de hoy": se alimenta de /sequences filtrado a HOY (coincide con Grafana),
-// no de kpi.secuencias del /summary (que devuelve otro conjunto). Si /sequences falla,
-// respaldo a lo que venga en el resumen para no dejar la lista vacía sin conexión.
-async function renderSeqList(kpi, plan) {
-  let seqs = null;
-  if (getSession()) {
-    try {
-      const hoy = new Date();
-      const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(hoy) });
-      if (Array.isArray(data.secuencias)) seqs = data.secuencias;
-    } catch (e) { /* respaldo abajo */ }
-  }
-  if (!Array.isArray(seqs)) seqs = kpi.secuencias ?? plan.secuencias ?? null;
-  pintarSeqList(Array.isArray(seqs) ? ordenarPlan(seqs) : seqs);
-}
-
+// "Secuencias de hoy" se pinta desde cargarPlanDias() (grupo de hoy del rango de
+// 7 días de /sequences), que coincide con Grafana. pintarSeqList solo dibuja.
 function pintarSeqList(seqs) {
   const cont = document.getElementById('seq-list');
   const title = document.getElementById('seq-sec-title');
@@ -2975,8 +2974,7 @@ function renderKpi(kpi, esCache) {
     desv === null || desv === undefined ? '—' : (desv > 0 ? '+' : '') + desv.toFixed(1) + ' %',
     stDesv);
 
-  renderSeqList(kpi, plan);
-  cargarPlanDias(false);
+  cargarPlanDias(kpi, plan);
 
   // Lista final: alertas del servidor (menos las de KPI personalizados) + personales
   const overridden = THR_KEYS.filter(k => thr[k].en).flatMap(k => THR_SERVER_TYPES[k]);
@@ -3319,7 +3317,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
