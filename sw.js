@@ -1,4 +1,4 @@
-const CACHE = 'ln-jaula-v14';
+const CACHE = 'ln-jaula-v15';
 const APP_SHELL = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', event => {

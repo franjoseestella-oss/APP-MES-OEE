@@ -2187,44 +2187,35 @@ function renderCarretillas(seqs) {
     </div>`).join('');
 }
 
-// Carga /sequences por rango de 7 días y alimenta DOS secciones desde el MISMO
-// origen (el que coincide con Grafana): "Carretillas por día" (todos los días) y
-// "Secuencias de hoy" (el grupo de hoy). Antes "Secuencias de hoy" pedía un solo
-// día (desde=hasta=hoy) y el backend respondía otro conjunto distinto.
+// Pide al backend el plan de CADA día por separado con /sequences?fecha=<día>
+// (el mismo criterio que Grafana). Así no agrupamos por fecha de montaje: cada
+// día devuelve exactamente sus secuencias (hoy empieza en 0227). Alimenta las dos
+// secciones: "Carretillas por día" (todos los días) y "Secuencias de hoy".
 let planDias = null;
 async function cargarPlanDias(kpi, plan) {
-  let seqs7 = null;
-  if (getSession()) {
-    try {
-      const hoy = new Date();
-      const fin = new Date(); fin.setDate(hoy.getDate() + 6);
-      const data = await api('/sequences', { desde: ymd(hoy), hasta: ymd(fin) });
-      if (Array.isArray(data.secuencias)) seqs7 = data.secuencias;
-    } catch (e) { /* respaldo abajo */ }
-  }
-
-  if (Array.isArray(seqs7)) {
-    const porDia = {};
-    for (const s of seqs7) {
-      const f = fechaKey(seqFechaMontaje(s)); // agrupamos por Fecha Montaje, como Grafana
-      if (!f) continue;
-      (porDia[f] = porDia[f] || []).push(s);
-    }
-    planDias = Object.entries(porDia)
-      .map(([f, arr]) => ({ f, seqs: ordenarPlan(arr) }))
-      .sort((a, b) => a.f.localeCompare(b.f));
-    document.getElementById('plandias-sec').style.display = '';
-    renderPlanDias();
-    // "Secuencias de hoy" = el grupo de hoy de este mismo listado
-    const hk = ymd(new Date());
-    const hoyGrupo = planDias.find(d => d.f === hk);
-    pintarSeqList(hoyGrupo ? hoyGrupo.seqs : []);
-  } else {
-    // Sin /sequences (p. ej. sin conexión): ocultamos el listado por día y usamos
-    // el resumen como respaldo para no dejar "Secuencias de hoy" vacía.
+  const respaldo = () => {
     if (!planDias) document.getElementById('plandias-sec').style.display = 'none';
     const resp = kpi && (kpi.secuencias ?? (plan && plan.secuencias));
     pintarSeqList(Array.isArray(resp) ? ordenarPlan(resp) : null);
+  };
+  if (!getSession()) { respaldo(); return; }
+
+  const hoy = new Date();
+  const dias = [];
+  for (let i = 0; i < 7; i++) { const d = new Date(); d.setDate(hoy.getDate() + i); dias.push(ymd(d)); }
+  try {
+    const res = await Promise.all(dias.map(f =>
+      api('/sequences', { fecha: f })
+        .then(r => ({ f, seqs: Array.isArray(r.secuencias) ? r.secuencias : [] }))
+        .catch(() => ({ f, seqs: [] }))
+    ));
+    planDias = res.filter(r => r.seqs.length).map(r => ({ f: r.f, seqs: ordenarPlan(r.seqs) }));
+    document.getElementById('plandias-sec').style.display = planDias.length ? '' : 'none';
+    renderPlanDias();
+    const hoyGrupo = planDias.find(d => d.f === ymd(hoy));
+    pintarSeqList(hoyGrupo ? hoyGrupo.seqs : []);
+  } catch (e) {
+    respaldo();
   }
 }
 // Fecha en formato español "24/07/2026" a partir de "2026-07-24", "20260724",
@@ -2264,7 +2255,6 @@ function renderPlanDias() {
     cont.innerHTML = '<div class="empty-state">Sin carretillas planificadas en los próximos días.</div>';
     return;
   }
-  const h = v => esc(fmtHora(v) || '—');
   cont.innerHTML = planDias.map((dia, idx) => {
     const filas = dia.seqs.map(s => {
       const st = seqEstado(s);
@@ -2274,10 +2264,6 @@ function renderPlanDias() {
         <td>${esc(seqModelo(s))}</td>
         <td>${esc(fmtFechaES(seqFechaMontaje(s)))}</td>
         <td>${esc(seqMastil(s) ?? '—')}</td>
-        <td>${h(seqIniTeorico(s))}</td>
-        <td>${h(seqFinTeorico(s))}</td>
-        <td class="c-real">${h(seqIniReal(s))}</td>
-        <td class="c-real">${h(seqFinReal(s))}</td>
       </tr>`;
     }).join('');
     return `<div class="pd-dia ${idx === 0 ? 'open' : ''}">
@@ -2289,7 +2275,6 @@ function renderPlanDias() {
       <div class="pd-filas"><div class="pd-tablewrap"><table class="pd-table">
         <thead><tr>
           <th>Sec.</th><th>Bastidor</th><th>Modelo</th><th>F. Montaje</th><th>Mástil</th>
-          <th>Ini. teór.</th><th>Fin teór.</th><th>Ini. real</th><th>Fin real</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table></div></div>
@@ -3360,7 +3345,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
