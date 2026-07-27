@@ -3714,7 +3714,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -3915,9 +3915,27 @@ async function togglePush() {
 
     await updatePushStatusUI();
   } catch (e) {
-    res.textContent = '✖ No se pudo activar: ' + e.message;
+    res.innerHTML = explicarFalloPush(e);
     res.className = 'test-result fail';
   }
+}
+
+// "Registration failed - push service error" y compañía vienen del navegador,
+// no de nuestro servidor: el móvil no ha podido darse de alta en el servicio de
+// push (FCM en Chrome, WNS en Edge). Casi siempre es la red de planta, que
+// bloquea esos servidores. Como el mensaje del navegador no dice nada útil, se
+// traduce a algo accionable.
+function explicarFalloPush(e) {
+  const m = String(e && e.message || e);
+  const esServicio = /push service|Registration failed|AbortError|service error/i.test(m);
+  if (!esServicio) return '✖ No se pudo activar: ' + esc(m);
+  return '✖ El navegador no ha podido darse de alta en el servicio de notificaciones.' +
+    '<div class="ac-meta" style="margin-top:6px;text-align:left">' +
+    'No es el servidor MES: es el móvil o la red. Prueba, por este orden:' +
+    '<br>1. El móvil con <b>datos (4G/5G)</b> en vez de la WiFi de planta — la red corporativa suele bloquear los servidores de Google/Microsoft que reparten los avisos.' +
+    '<br>2. Que el móvil tenga <b>Servicios de Google Play</b> activos y una cuenta de Google.' +
+    '<br>3. Si estás en el <b>PC</b>, pruébalo en el móvil: en los equipos de empresa suele estar bloqueado.' +
+    '<br><span style="opacity:.7">Detalle: ' + esc(m) + '</span></div>';
 }
 
 // Prueba de verdad: pide al servidor que mande un push. Es la única forma de
