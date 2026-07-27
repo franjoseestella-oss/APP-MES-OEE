@@ -1,9 +1,10 @@
 # Despliega esta carpeta en la Azure Static Web App (el frontend de PC).
 #
-# GitHub Pages (el frontend del móvil) se publica solo con cada push a main
-# mediante .github/workflows/pages.yml. La Static Web App NO: su provider es
-# "SwaCli" (subida manual), así que hay que ejecutar este script después de
-# cada push para que los dos frontends sirvan la misma versión.
+# La app se publica en TRES sitios. Vercel (appmesoee.vercel.app, la que tienen
+# instalada los móviles de planta) y GitHub Pages se despliegan solos con cada
+# push a main. La Static Web App NO: su provider es "SwaCli" (subida manual),
+# así que hay que ejecutar este script después de cada push para que los tres
+# sirvan la misma versión.
 #
 #   powershell -ExecutionPolicy Bypass -File .\desplegar-swa.ps1
 #

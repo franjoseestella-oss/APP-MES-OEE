@@ -90,19 +90,25 @@ versión nueva.
 
 ## Publicación
 
-La app se sirve desde **dos sitios** y hay que dejar los dos en la misma
+La app se sirve desde **tres sitios** y hay que dejar los tres en la misma
 versión, o unos usuarios ven la app vieja y otros la nueva:
 
 | Destino | Quién lo usa | Cómo se publica |
 |---------|--------------|-----------------|
+| Vercel · `appmesoee.vercel.app` | **Móviles de planta** (es la que tienen instalada como app) | **Automático** en cada push a `main` |
 | GitHub Pages · `franjoseestella-oss.github.io/APP-MES-OEE` | Móvil | **Automático** en cada push a `main` ([pages.yml](.github/workflows/pages.yml)) |
 | Azure Static Web App · `brave-sky-0bd4aa503.7.azurestaticapps.net` | PC | **Manual**: `powershell -ExecutionPolicy Bypass -File .\desplegar-swa.ps1` |
 
+La de Vercel es la que está instalada en los móviles de planta: al añadirla a
+la pantalla de inicio, Android crea una app ligada a **ese** dominio, así que
+cambiar de dirección obligaría a reinstalarla en cada móvil. No la des por
+muerta aunque no aparezca en los despliegues de Azure.
+
 La Static Web App se creó con la CLI (provider `SwaCli`), no enlazada a
-GitHub, así que no se entera de los push. Automatizarla con Actions requiere
-guardar su token de despliegue como secreto `AZURE_STATIC_WEB_APPS_API_TOKEN`
-del repositorio; mientras eso no exista, **ejecuta el script después de cada
-push**.
+GitHub, así que es la única que no se entera de los push. Automatizarla con
+Actions requiere guardar su token de despliegue como secreto
+`AZURE_STATIC_WEB_APPS_API_TOKEN` del repositorio; mientras eso no exista,
+**ejecuta el script después de cada push**.
 
 Para comprobar qué versión sirve cada uno, busca `APP_VERSION` en el
 `index.html` publicado (la app también la muestra en Ajustes).
