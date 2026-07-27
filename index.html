@@ -2604,28 +2604,114 @@ function seqMatches(s, code) {
     .some(v => v !== null && v !== undefined && String(v).trim().toLowerCase() === code);
 }
 
+// Fecha suelta → YYYYMMDD. Acepta 20260727, 2026-07-27 y 27/07/2026.
+function fechaDeToken(t) {
+  const s = String(t || '').trim();
+  let m = s.match(/^(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})$/);
+  if (!m) {
+    const d = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+    if (!d) return null;
+    m = [null, d[3], d[2].padStart(2, '0'), d[1].padStart(2, '0')];
+  }
+  const [a, mes, dia] = [+m[1], +m[2], +m[3]];
+  if (a < 2000 || a > 2100 || mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
+  return String(a) + String(mes).padStart(2, '0') + String(dia).padStart(2, '0');
+}
+
+// El QR de la carretilla no tiene por qué ser el bastidor pelado: puede traer
+// varios campos (fecha de montaje, secuencia, modelo…) separados por saltos de
+// línea, barras o punto y coma, o venir como pares clave=valor. Se extrae lo
+// que sirve para localizarla: bastidor, fecha y secuencia. Lo que no se
+// reconozca se deja en 'crudo' para poder buscar con el texto tal cual.
+function interpretarCodigo(raw) {
+  const crudo = String(raw ?? '').trim();
+  const texto = crudo.toUpperCase();
+  const info = { crudo, bastidor: null, fecha: null, secuencia: null };
+  if (!crudo) return info;
+
+  const valorDe = claves => {
+    const m = texto.match(new RegExp('(?:' + claves + ')\\s*[=:]\\s*([A-Z0-9\\-\\/]+)'));
+    return m ? m[1] : null;
+  };
+  const bastidorClave = valorDe('NBASTIDOR|BASTIDOR|BAST|CHASIS|CHASSIS|FRAME');
+  const fechaClave = valorDe('FECHA_MONTAJE|FECHAMONTAJE|FECHA|DATE');
+  const secClave = valorDe('NSECUENCIA|SECUENCIA|SEQ|SEC');
+
+  const tokens = texto.split(/[^A-Z0-9\-\/]+/).filter(Boolean);
+
+  info.fecha = fechaDeToken(fechaClave) || tokens.map(fechaDeToken).find(Boolean) || null;
+
+  // Secuencia: 3 o 4 cifras (0227, 245). Se descarta lo que sea la fecha.
+  const esSecuencia = t => /^\d{3,4}$/.test(t) && fechaDeToken(t) === null;
+  const secTexto = (secClave && esSecuencia(secClave)) ? secClave : tokens.find(esSecuencia);
+  info.secuencia = secTexto ? String(parseInt(secTexto, 10)) : null;
+
+  // Bastidor: mezcla letras y cifras (SF18F-00379, SFB09E705000, STB310703433).
+  // Si hay varios candidatos gana el más largo, que es el que más información da.
+  const esBastidor = t => t.length >= 6 && /[A-Z]/.test(t) && /\d/.test(t);
+  if (bastidorClave && esBastidor(bastidorClave)) {
+    info.bastidor = bastidorClave;
+  } else {
+    const cands = tokens.filter(esBastidor).sort((a, b) => b.length - a.length);
+    info.bastidor = cands[0] || null;
+  }
+  return info;
+}
+
+// Resuelve (fecha, secuencia) → bastidor consultando el listado de ese día.
+async function bastidorPorSecuencia(fecha, secuencia) {
+  const num = parseInt(secuencia, 10);
+  if (!Number.isFinite(num)) return null;
+  const mismaSec = x => parseInt(String(x.secuencia ?? x.nsecuencia ?? ''), 10) === num;
+
+  // Si la fecha es la de hoy (o no viene), lo que ya está cargado vale.
+  if (!fecha || fecha === ymd(new Date())) {
+    const s = Array.isArray(lastSeqs) ? lastSeqs.find(mismaSec) : null;
+    if (s && seqBastidor(s)) return String(seqBastidor(s));
+  }
+  try {
+    const data = await api('/sequences', fecha ? { fecha } : {});
+    const arr = Array.isArray(data.secuencias) ? data.secuencias : [];
+    const s = arr.find(mismaSec);
+    return s && s.bastidor ? String(s.bastidor) : null;
+  } catch (e) { return null; }
+}
+
 async function doBuscar(rawCode) {
   const input = document.getElementById('scan-code');
-  const code = String(rawCode ?? input.value).trim();
+  const entrada = String(rawCode ?? input.value).trim();
   const msg = document.getElementById('scan-msg');
   const cont = document.getElementById('scan-result');
-  if (rawCode) input.value = code;
   msg.textContent = '';
   msg.className = 'test-result';
-  if (!code) {
+  if (!entrada) {
     msg.textContent = '✖ Escribe o escanea un código';
     msg.className = 'test-result fail';
     cont.innerHTML = '';
     return;
   }
 
+  msg.textContent = 'Consultando…';
+  const info = interpretarCodigo(entrada);
+
+  // El bastidor puede venir en el propio código o haber que deducirlo de la
+  // fecha de montaje + el número de secuencia que trae el QR.
+  let code = info.bastidor;
+  let resueltoPorSecuencia = false;
+  if (!code && info.secuencia) {
+    code = await bastidorPorSecuencia(info.fecha, info.secuencia);
+    resueltoPorSecuencia = !!code;
+  }
+  if (!code) code = info.crudo;
+
+  input.value = code;
   pushReciente(code);
 
   // 1) Buscar en las secuencias del día ya cargadas
   let s = Array.isArray(lastSeqs) ? lastSeqs.find(x => seqMatches(x, code.toLowerCase())) : null;
 
   // 2) Pedir al servidor el detalle de las pruebas (tiempos medidos)
-  msg.textContent = 'Consultando…';
+  let detalleFallo = false;
   try {
     const detail = await api('/sequence-detail', { bastidor: code });
     if (detail) {
@@ -2634,7 +2720,27 @@ async function doBuscar(rawCode) {
           ? String(detail.estado).toUpperCase() : (s ? s.resultado : null),
       });
     }
-  } catch (e) { /* sin conexión o bastidor sin registro: seguimos con lo local */ }
+  } catch (e) { detalleFallo = true; }
+
+  // 3) Si por bastidor no ha salido nada pero el QR traía secuencia, se
+  //    reintenta resolviéndola contra el listado de su día.
+  if ((!s || detalleFallo) && info.secuencia && !resueltoPorSecuencia) {
+    const otro = await bastidorPorSecuencia(info.fecha, info.secuencia);
+    if (otro && otro.toLowerCase() !== code.toLowerCase()) {
+      code = otro;
+      input.value = code;
+      s = Array.isArray(lastSeqs) ? lastSeqs.find(x => seqMatches(x, code.toLowerCase())) : s;
+      try {
+        const detail = await api('/sequence-detail', { bastidor: code });
+        if (detail) {
+          s = Object.assign({}, s || {}, detail, {
+            resultado: ['OK', 'NOK'].includes(String(detail.estado).toUpperCase())
+              ? String(detail.estado).toUpperCase() : (s ? s.resultado : null),
+          });
+        }
+      } catch (e) { /* tampoco por secuencia: se informa abajo */ }
+    }
+  }
   msg.textContent = '';
 
   lastScanSeq = s || null;
@@ -2642,11 +2748,17 @@ async function doBuscar(rawCode) {
   const nombre = s ? (s.modelo ?? s.descripcion ?? '') : '';
 
   if (!s || seqEstado(s) === 'pend') {
+    // Cuando no se encuentra nada se enseña lo que se leyó de verdad: si el QR
+    // trae un formato que no reconocemos, se ve aquí en vez de quedarse en un
+    // "no realizado" que despista.
+    const leido = info.crudo !== code
+      ? '<div class="ac-meta" style="margin-top:6px">Leído: ' + esc(info.crudo) + '</div>' : '';
     cont.innerHTML = `
       <div class="tile st-warning scan-result-tile" ${s ? 'onclick="openSeqSheet(lastScanSeq)"' : ''}>
         <div class="t-label">${esc(bastidor)}${nombre ? ' · ' + esc(nombre) : ''}</div>
         <div class="t-value" style="font-size:22px">No realizado</div>
-        <div class="t-status">${s ? '⚠ Planificado, pruebas aún sin hacer' : '⚠ Sin registro hoy para este código'}</div>
+        <div class="t-status">${s ? '⚠ Planificado, pruebas aún sin hacer' : '⚠ Sin registro para este código'}</div>
+        ${s ? '' : leido}
       </div>`;
     return;
   }
@@ -3532,7 +3644,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
