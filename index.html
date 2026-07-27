@@ -703,6 +703,12 @@
       linear-gradient(#fff,#fff) right 0 bottom 0 / 3px 26px;
     background-repeat: no-repeat;
   }
+  /* Verde = hay un QR dentro del recuadro y la cámara ya ha enfocado ahí.
+     Es solo un aviso: sigue sin leerse nada hasta que se pulsa Disparar. */
+  .scan-viewport.listo .scan-roi {
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,0.55), inset 0 0 0 2px var(--green);
+  }
+  .scan-viewport.listo .scan-roi::after,
   .scan-viewport.disparando .scan-roi::after { filter: drop-shadow(0 0 6px var(--green)); }
   .scan-acciones { display: flex; gap: 8px; width: 100%; max-width: 420px; }
   .scan-acciones .btn { margin: 0; }
@@ -2696,17 +2702,40 @@ function togglePw() {
   i.type = i.type === 'password' ? 'text' : 'password';
 }
 
-// El escáner NO lee en automático: se abre la cámara, el operario encuadra el
-// QR dentro del recuadro y pulsa Disparar. Solo entonces se congela el
-// fotograma y se busca el código, y únicamente dentro del recuadro — así el
-// operario decide qué se lee y no se cuela el QR de la carretilla de al lado.
+// El escáner NO dispara en automático: se abre la cámara, el operario encuadra
+// el QR dentro del recuadro y pulsa Disparar. Solo entonces se lee el código, y
+// únicamente lo que hay dentro del recuadro — así el operario decide qué se lee
+// y no se cuela el QR de la carretilla de al lado.
+//
+// En paralelo corre una vigilancia que SOLO mira si hay un QR dentro del
+// recuadro para dos cosas: enfocar la cámara en cuanto lo ve, y avisar de que
+// ya se puede disparar. Nunca lanza la búsqueda por su cuenta.
 let scanStream = null;
 let scanDetector = null;
+let scanTrack = null;
+let scanVigilancia = null;
+let scanMirando = false;      // hay un detect() de la vigilancia en vuelo
+let scanDisparando = false;   // hay un disparo en curso: la vigilancia no toca nada
+let scanQRALaVista = false;
+let scanEnfoqueContinuo = false;
 
 function scanHint(texto, clase) {
   const el = document.getElementById('scan-hint');
   el.textContent = texto;
   el.className = 'scan-hint' + (clase ? ' ' + clase : '');
+}
+
+// Pide un modo de enfoque a la cámara. Devuelve si se ha podido aplicar: el
+// soporte varía mucho entre móviles y en muchos no existe siquiera.
+async function scanEnfocar(modo) {
+  if (!scanTrack || !scanTrack.getCapabilities) return false;
+  let caps;
+  try { caps = scanTrack.getCapabilities(); } catch (e) { return false; }
+  if (!caps.focusMode || !caps.focusMode.includes(modo)) return false;
+  try {
+    await scanTrack.applyConstraints({ advanced: [{ focusMode: modo }] });
+    return true;
+  } catch (e) { return false; }
 }
 
 async function startScan() {
@@ -2718,7 +2747,16 @@ async function startScan() {
     return;
   }
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    // Resolución alta: un QR pequeño en un fotograma de 640px no hay quien lo
+    // lea. focusMode va aquí como pista; luego se reintenta sobre la pista.
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        focusMode: { ideal: 'continuous' },
+      },
+    });
   } catch (e) {
     msg.textContent = '✖ No se pudo abrir la cámara (revisa el permiso)';
     msg.className = 'test-result fail';
@@ -2726,15 +2764,48 @@ async function startScan() {
   }
   const video = document.getElementById('scan-video');
   video.srcObject = scanStream;
+  scanTrack = scanStream.getVideoTracks()[0] || null;
+  scanEnfoqueContinuo = await scanEnfocar('continuous');
   document.getElementById('scan-code2').value = '';
   document.getElementById('scan-disparar').disabled = false;
-  scanHint('Encuadra el QR en el recuadro y pulsa Disparar');
+  scanQRALaVista = false;
+  scanMirando = false;
+  scanDisparando = false;
+  scanHint('Encuadra el QR en el recuadro');
   document.getElementById('scan-modal').classList.add('open');
   // Solo códigos QR: ignoramos los códigos de barras 1D/2D
   try {
     scanDetector = new BarcodeDetector({ formats: ['qr_code'] });
   } catch (e) {
     scanDetector = new BarcodeDetector();
+  }
+  scanVigilancia = setInterval(vigilarROI, 300);
+}
+
+// Cuatro miradas por segundo: suficiente para reaccionar y sin freír la CPU.
+// Solo cambia el aviso y pide enfoque; el disparo lo da siempre el operario.
+async function vigilarROI() {
+  const video = document.getElementById('scan-video');
+  if (!scanStream || !scanDetector || scanMirando || scanDisparando || !video.videoWidth) return;
+  scanMirando = true;
+  let hayQR = false;
+  try {
+    hayQR = (await scanDetector.detect(recorteROI(video))).length > 0;
+  } catch (e) { /* fotograma aún no utilizable */ }
+  scanMirando = false;
+
+  // Si mientras mirábamos se ha pulsado Disparar (o se ha cerrado), no pisamos
+  // ni el aviso ni el recuadro: manda el disparo.
+  if (scanDisparando || !scanStream || hayQR === scanQRALaVista) return;
+  scanQRALaVista = hayQR;
+  document.getElementById('scan-viewport').classList.toggle('listo', hayQR);
+  if (hayQR) {
+    // Enfocar al ver el código. Si la cámara ya va en continuo se enfoca sola;
+    // si no, se le pide un enfoque puntual justo ahora que hay algo que enfocar.
+    if (!scanEnfoqueContinuo) scanEnfocar('single-shot');
+    scanHint('✔ QR a la vista — pulsa Disparar', 'ok');
+  } else {
+    scanHint('Encuadra el QR en el recuadro');
   }
 }
 
@@ -2771,11 +2842,13 @@ function recorteROI(video) {
 async function dispararScan() {
   const video = document.getElementById('scan-video');
   const boton = document.getElementById('scan-disparar');
-  if (!scanStream || !scanDetector) return;
+  if (!scanStream || !scanDetector || scanDisparando) return;
   if (!video.videoWidth) { scanHint('La cámara aún no está lista, espera un segundo', 'fail'); return; }
 
   boton.disabled = true;
-  document.getElementById('scan-viewport').classList.add('disparando');
+  scanDisparando = true;              // la vigilancia se aparta mientras se dispara
+  const viewport = document.getElementById('scan-viewport');
+  viewport.classList.add('disparando');
   scanHint('Leyendo…');
   try {
     const codes = await scanDetector.detect(recorteROI(video));
@@ -2792,7 +2865,9 @@ async function dispararScan() {
   } catch (e) {
     scanHint('No se pudo leer el fotograma, inténtalo otra vez', 'fail');
   }
-  document.getElementById('scan-viewport').classList.remove('disparando');
+  viewport.classList.remove('disparando', 'listo');
+  scanQRALaVista = false;             // que la vigilancia vuelva a opinar desde cero
+  scanDisparando = false;
   boton.disabled = false;
 }
 
@@ -2807,12 +2882,17 @@ document.getElementById('scan-code2').addEventListener('keydown', e => {
 });
 
 function stopScan() {
+  if (scanVigilancia) { clearInterval(scanVigilancia); scanVigilancia = null; }
   if (scanStream) {
     scanStream.getTracks().forEach(t => t.stop());
     scanStream = null;
   }
   scanDetector = null;
-  document.getElementById('scan-viewport').classList.remove('disparando');
+  scanTrack = null;
+  scanMirando = false;
+  scanDisparando = false;
+  scanQRALaVista = false;
+  document.getElementById('scan-viewport').classList.remove('disparando', 'listo');
   document.getElementById('scan-modal').classList.remove('open');
 }
 
@@ -3452,7 +3532,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
