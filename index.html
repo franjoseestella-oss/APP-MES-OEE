@@ -1720,8 +1720,9 @@
       <div class="sec-title">Notificaciones</div>
       <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
       <div class="test-result" id="push-result" role="status"></div>
-      <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar aviso (local)</button>
-      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso.<br><b>Ojo:</b> «Probar» solo dibuja un aviso en este móvil — comprueba que las notificaciones se ven, pero <b>no</b> que el servidor pueda mandarlas.</div>
+      <button class="btn" onclick="probarPushServidor()" style="margin-top:8px">📡 Probar envío desde el servidor</button>
+      <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar aviso (solo local)</button>
+      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso.<br>El botón <b>del servidor</b> recorre la cadena entera y es el que de verdad comprueba que las alarmas llegarán; el <b>local</b> solo dibuja un aviso en este móvil para ver cómo se ve.</div>
       <button class="btn" id="btn-avisos" onclick="toggleAvisos()" style="margin-top:14px">Activar sonido y vibración</button>
       <div class="form-hint">Con la app abierta, pita y vibra cuando aparece una alarma activa nueva de mantenimiento.</div>
     </section>
@@ -3713,7 +3714,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -3805,6 +3806,21 @@ async function updatePushStatusUI() {
     btn.textContent = 'Desactivar notificaciones push';
     res.textContent = '✔ Notificaciones activadas en este dispositivo';
     res.className = 'test-result ok';
+    // Que el móvil tenga suscripción no significa que el servidor lo sepa: si
+    // se le perdió la lista, aquí ponía "activadas" y no llegaba nada.
+    const { url } = cfg();
+    if (url && getSession()) {
+      try {
+        const r = await fetch(url + '/api/v1/push/estado', { headers: authHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          if (!d.suscritos) {
+            res.textContent = '⚠ Este móvil está suscrito pero el servidor no lo tiene registrado — pulsa «Probar envío desde el servidor»';
+            res.className = 'test-result fail';
+          }
+        }
+      } catch (e) { /* sin conexión: se deja el estado local */ }
+    }
   } else {
     btn.textContent = 'Activar notificaciones push';
     res.textContent = '';
@@ -3900,6 +3916,43 @@ async function togglePush() {
     await updatePushStatusUI();
   } catch (e) {
     res.textContent = '✖ No se pudo activar: ' + e.message;
+    res.className = 'test-result fail';
+  }
+}
+
+// Prueba de verdad: pide al servidor que mande un push. Es la única forma de
+// comprobar la cadena completa (servidor → servicio de push → móvil); el aviso
+// local siempre funciona aunque el servidor no sepa a quién avisar, y por eso
+// el fallo de las alarmas pasó desapercibido.
+async function probarPushServidor() {
+  const res = document.getElementById('push-result');
+  const { url } = cfg();
+  if (!url) {
+    res.textContent = '✖ Configura primero la URL del servidor arriba';
+    res.className = 'test-result fail';
+    return;
+  }
+  res.textContent = 'Pidiendo al servidor que envíe…';
+  res.className = 'test-result';
+  try {
+    await reengancharPush();   // por si el servidor se reinició y perdió la lista
+    const r = await fetch(url + '/api/v1/push/test', { method: 'POST', headers: authHeaders() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.enviados > 0) {
+      res.textContent = '✔ Enviado a ' + d.enviados + ' dispositivo' + (d.enviados > 1 ? 's' : '') +
+        ' — debería llegarte el aviso en unos segundos';
+      res.className = 'test-result ok';
+    } else if (!d.suscritos) {
+      res.textContent = '✖ El servidor no tiene ningún dispositivo suscrito. Activa las notificaciones aquí arriba.';
+      res.className = 'test-result fail';
+    } else {
+      res.textContent = '✖ No se pudo entregar (' + (d.detalle || 'suscripción caducada') +
+        '). Desactiva y vuelve a activar las notificaciones.';
+      res.className = 'test-result fail';
+    }
+  } catch (e) {
+    res.textContent = '✖ No se pudo probar: ' + e.message;
     res.className = 'test-result fail';
   }
 }
