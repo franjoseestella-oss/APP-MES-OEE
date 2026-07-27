@@ -1443,16 +1443,6 @@
     </section>
 
     <section>
-      <div class="sec-title" id="seq-sec-title">Secuencias de hoy</div>
-      <div class="form-group" style="margin-bottom:10px">
-        <input type="search" id="seq-search" placeholder="🔍 Filtrar por bastidor, modelo u operario…" autocomplete="off">
-      </div>
-      <div id="seq-list">
-        <div class="skel"></div><div class="skel"></div>
-      </div>
-    </section>
-
-    <section>
       <div class="sec-title">Alertas KPI activas</div>
       <div id="kpi-alert-list">
         <div class="skel"></div><div class="skel"></div>
@@ -2385,59 +2375,15 @@ function renderPlanDias() {
   }).join('');
 }
 
-// "Secuencias de hoy" se pinta desde cargarPlanDias() (grupo de hoy del rango de
-// 7 días de /sequences), que coincide con Grafana. pintarSeqList solo dibuja.
+// Las secuencias del día llegan desde cargarPlanDias() (grupo de hoy del rango de
+// 7 días de /sequences), que coincide con Grafana. Ya no hay listado propio en la
+// pantalla: pintarSeqList solo guarda los datos y refresca lo que depende de ellos
+// (carretillas, calidad, gráficos, resumen…).
 function pintarSeqList(seqs) {
-  const cont = document.getElementById('seq-list');
-  const title = document.getElementById('seq-sec-title');
   lastSeqs = Array.isArray(seqs) ? seqs : null;
   renderCarretillas(lastSeqs);
   renderCalidad();
-  if (!Array.isArray(seqs)) {
-    title.textContent = 'Secuencias de hoy';
-    cont.innerHTML = '<div class="empty-state">El servidor aún no envía el listado de secuencias del día.</div>';
-    return;
-  }
-  const done = seqs.filter(s => ['done', 'nok'].includes(seqEstado(s))).length;
-  title.textContent = 'Secuencias de hoy · ' + done + ' / ' + seqs.length;
-  if (!seqs.length) {
-    cont.innerHTML = '<div class="empty-state">Sin secuencias planificadas para hoy.</div>';
-    return;
-  }
-  const q = (document.getElementById('seq-search').value || '').trim().toLowerCase();
-  const visibles = seqs
-    .map((s, i) => ({ s, i }))
-    .filter(({ s }) => !q || [seqBastidor(s), s.modelo, s.descripcion, s.operario, s.mastil, s.secuencia]
-      .some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
-  if (!visibles.length) {
-    cont.innerHTML = '<div class="empty-state">Sin secuencias que coincidan con «' + esc(q) + '».</div>';
-    return;
-  }
-  cont.innerHTML = visibles.map(({ s, i }) => {
-    const st = seqEstado(s);
-    const desc = s.modelo ?? s.descripcion ?? s.articulo;
-    const meta = [];
-    if (s.secuencia ?? null) meta.push('Sec. ' + esc(s.secuencia));
-    const ini = fmtHora(s.hora_inicio ?? s.inicio);
-    const fin = fmtHora(s.hora_fin ?? s.fin);
-    if (ini || fin) meta.push((ini || '—') + (fin ? ' → ' + fin : ''));
-    if (s.mastil) meta.push('Mástil ' + esc(s.mastil));
-    if (s.operario) meta.push(esc(s.operario));
-    return `
-      <div class="seq-card sq-${st}" data-i="${i}">
-        <div class="ac-head">
-          <span class="sq-code">${esc(seqBastidor(s))}</span>
-          <span class="sq-state">${SEQ_STATE_LABEL[st]} ›</span>
-        </div>
-        ${desc ? '<div class="ac-msg">' + esc(desc) + '</div>' : ''}
-        ${meta.length ? '<div class="ac-meta" style="margin-top:4px">' + meta.join(' · ') + '</div>' : ''}
-      </div>`;
-  }).join('');
 }
-
-document.getElementById('seq-search').addEventListener('input', () => {
-  if (Array.isArray(lastSeqs)) pintarSeqList(lastSeqs); // re-filtra sin volver a pedir datos
-});
 
 // ── BOTTOM SHEET ──
 function openSheet(html) {
@@ -2631,13 +2577,6 @@ function showNokSheet() {
 }
 
 let lastSeqs = null;
-
-document.getElementById('seq-list').addEventListener('click', e => {
-  const card = e.target.closest('.seq-card');
-  if (!card || !lastSeqs) return;
-  const s = lastSeqs[+card.dataset.i];
-  if (s) openSeqSheet(s);
-});
 
 // ── CALIDAD: BÚSQUEDA / ESCÁNER DE BASTIDOR ──
 let lastScanSeq = null;
@@ -3448,7 +3387,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
