@@ -1744,6 +1744,16 @@
       <div class="last-update" id="last-update">—</div>
     </section>
     <section>
+      <div class="sec-title">Ancla del plan</div>
+      <div class="form-group">
+        <label for="anchor-bastidor">Bastidor por el que empieza el plan de hoy</label>
+        <input type="text" id="anchor-bastidor" placeholder="p. ej. SF14H-50291" autocapitalize="characters" autocomplete="off">
+      </div>
+      <button class="btn" onclick="guardarAncla()">Guardar ancla</button>
+      <div class="test-result" id="anchor-result" role="status"></div>
+      <div class="form-hint">Las secuencias que iban por delante en la cola se descartan de la programación, de modo que este bastidor ocupa el primer hueco de hoy. <b>Se guarda en la base de datos y Grafana lo coge del mismo sitio</b>, así que con cambiarlo aquí la app y los paneles siguen cuadrando. Déjalo vacío para el plan rodante normal, sin anclar.</div>
+    </section>
+    <section>
       <div class="sec-title">Diagnóstico del plan</div>
       <button class="btn" onclick="diagPlan()">🔧 Ver datos crudos del plan</button>
       <div class="form-hint">Consulta cada endpoint del backend y muestra qué secuencias devuelve y con qué campos. Hazle una captura y pásamela para cuadrar el listado con Grafana.</div>
@@ -2300,6 +2310,55 @@ function segAHora(sec) {
   const p = x => String(x).padStart(2, '0');
   return p(Math.floor(sec / 3600)) + ':' + p(Math.floor((sec % 3600) / 60)) + ':' + p(sec % 60);
 }
+// ── ANCLA DEL PLAN ──
+// El bastidor por el que arranca el plan de hoy. Se guarda en la base de datos
+// y de ahí lo leen tanto el backend como los paneles de Grafana, así que se
+// cambia en un solo sitio y los dos van a la vez. Antes estaba escrito a mano
+// en tres sitios y bastaba tocar uno para que dejaran de cuadrar.
+async function cargarAncla() {
+  const inp = document.getElementById('anchor-bastidor');
+  const res = document.getElementById('anchor-result');
+  if (!inp || !getSession()) return;
+  try {
+    const d = await apiV1('/plan/anchor');
+    inp.value = d.bastidor || '';
+    if (d.forzada_por_entorno) {
+      res.textContent = '⚠ Forzada con la variable PLAN_START_BASTIDOR: lo que guardes aquí no tendrá efecto';
+      res.className = 'test-result fail';
+    } else {
+      res.textContent = '';
+      res.className = 'test-result';
+    }
+  } catch (e) { /* servidor antiguo o sin conexión: se deja el campo vacío */ }
+}
+
+async function guardarAncla() {
+  const inp = document.getElementById('anchor-bastidor');
+  const res = document.getElementById('anchor-result');
+  const { url } = cfg();
+  if (!url) { res.textContent = '✖ Configura primero la URL del servidor'; res.className = 'test-result fail'; return; }
+  res.textContent = 'Guardando…';
+  res.className = 'test-result';
+  try {
+    const r = await fetch(url + '/api/v1/plan/anchor', {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ bastidor: inp.value.trim() }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    inp.value = d.bastidor || '';
+    res.textContent = d.bastidor
+      ? '✔ El plan de hoy empieza por ' + d.bastidor + ' — Grafana lo coge del mismo sitio'
+      : '✔ Ancla quitada: plan rodante normal';
+    res.className = 'test-result ok';
+    refreshAll();
+  } catch (e) {
+    res.textContent = '✖ ' + e.message;
+    res.className = 'test-result fail';
+  }
+}
+
 // Diagnóstico: compara qué devuelve cada endpoint del plan (para cuadrar con Grafana)
 async function diagPlan() {
   const out = document.getElementById('diag-out');
@@ -3707,6 +3766,7 @@ function enterApp(user) {
   }
 
   initThrUI();
+  cargarAncla();
   cargarNotas();
   updateAvisosUI();
   updateWakeUI();
@@ -3718,7 +3778,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
