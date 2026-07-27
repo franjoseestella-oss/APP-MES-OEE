@@ -649,8 +649,7 @@
   .scan-modal.open { display: flex; }
   .scan-modal video {
     width: 100%;
-    max-height: 60vh;
-    border-radius: 14px;
+    height: 100%;
     border: 1px solid var(--border-2);
     object-fit: cover;
     background: #05070B;
@@ -660,43 +659,54 @@
     font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    animation: blink 1.8s ease infinite;
+    text-align: center;
+    min-height: 16px;
   }
-  .scan-cancel { max-width: 220px; }
-  .scan-viewport { position: relative; width: 100%; max-width: 480px; }
+  .scan-hint.fail { color: var(--red); }
+  .scan-hint.ok   { color: var(--green); }
+  .scan-viewport {
+    position: relative;
+    width: 100%;
+    max-width: 380px;
+    aspect-ratio: 3 / 4;       /* visor vertical: encuadrar de pie es lo natural */
+    max-height: 58vh;
+    overflow: hidden;          /* recorta el velo del recuadro */
+    border-radius: 14px;
+  }
   .scan-viewport video { display: block; }
-  .scan-corners {
+  /* Recuadro de encuadre (ROI): el QR se lee SOLO dentro de esta zona, y solo
+     cuando el operario pulsa Disparar. Nada de detección automática. */
+  .scan-roi {
     position: absolute;
-    inset: 5%;
+    left: 50%;
+    top: 50%;
+    width: 68%;
+    aspect-ratio: 1;
+    max-height: 80%;
+    transform: translate(-50%, -50%);
+    border-radius: 12px;
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,0.55);   /* oscurece todo lo de fuera */
     pointer-events: none;
-    opacity: 0.9;
+  }
+  .scan-roi::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
     background:
-      linear-gradient(#fff,#fff) left 0 top 0 / 24px 3px,
-      linear-gradient(#fff,#fff) left 0 top 0 / 3px 24px,
-      linear-gradient(#fff,#fff) right 0 top 0 / 24px 3px,
-      linear-gradient(#fff,#fff) right 0 top 0 / 3px 24px,
-      linear-gradient(#fff,#fff) left 0 bottom 0 / 24px 3px,
-      linear-gradient(#fff,#fff) left 0 bottom 0 / 3px 24px,
-      linear-gradient(#fff,#fff) right 0 bottom 0 / 24px 3px,
-      linear-gradient(#fff,#fff) right 0 bottom 0 / 3px 24px;
+      linear-gradient(#fff,#fff) left 0 top 0 / 26px 3px,
+      linear-gradient(#fff,#fff) left 0 top 0 / 3px 26px,
+      linear-gradient(#fff,#fff) right 0 top 0 / 26px 3px,
+      linear-gradient(#fff,#fff) right 0 top 0 / 3px 26px,
+      linear-gradient(#fff,#fff) left 0 bottom 0 / 26px 3px,
+      linear-gradient(#fff,#fff) left 0 bottom 0 / 3px 26px,
+      linear-gradient(#fff,#fff) right 0 bottom 0 / 26px 3px,
+      linear-gradient(#fff,#fff) right 0 bottom 0 / 3px 26px;
     background-repeat: no-repeat;
   }
-  .scan-line {
-    position: absolute;
-    left: 7%;
-    right: 7%;
-    top: 10%;
-    height: 3px;
-    border-radius: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255,64,64,0.95), transparent);
-    box-shadow: 0 0 14px rgba(255,50,50,0.8);
-    animation: scanline 2.2s ease-in-out infinite alternate;
-    pointer-events: none;
-  }
-  @keyframes scanline {
-    from { top: 9%; }
-    to   { top: 89%; }
-  }
+  .scan-viewport.disparando .scan-roi::after { filter: drop-shadow(0 0 6px var(--green)); }
+  .scan-acciones { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+  .scan-acciones .btn { margin: 0; }
+  .scan-acciones .scan-cancel { max-width: 140px; }
   .scan-manual { display: flex; gap: 8px; width: 100%; max-width: 420px; }
   .scan-manual input {
     flex: 1;
@@ -1774,17 +1784,19 @@
 <div id="toast" role="status"></div>
 
 <div class="scan-modal" id="scan-modal">
-  <div class="scan-viewport">
+  <div class="scan-viewport" id="scan-viewport">
     <video id="scan-video" autoplay playsinline muted></video>
-    <div class="scan-corners"></div>
-    <div class="scan-line"></div>
+    <div class="scan-roi" id="scan-roi"></div>
   </div>
-  <div class="scan-hint">Apunta al código QR…</div>
+  <div class="scan-hint" id="scan-hint">Encuadra el QR en el recuadro y pulsa Disparar</div>
+  <div class="scan-acciones">
+    <button class="btn" id="scan-disparar" onclick="dispararScan()">◎ Disparar</button>
+    <button class="btn danger scan-cancel" onclick="stopScan()">Cancelar</button>
+  </div>
   <div class="scan-manual">
     <input type="text" id="scan-code2" placeholder="…o escribe el código aquí" autocapitalize="characters" autocomplete="off">
     <button class="btn" onclick="buscarDesdeScanner()">Buscar</button>
   </div>
-  <button class="btn danger scan-cancel" onclick="stopScan()">Cancelar</button>
 </div>
 
 <div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()"></div>
@@ -2684,8 +2696,18 @@ function togglePw() {
   i.type = i.type === 'password' ? 'text' : 'password';
 }
 
+// El escáner NO lee en automático: se abre la cámara, el operario encuadra el
+// QR dentro del recuadro y pulsa Disparar. Solo entonces se congela el
+// fotograma y se busca el código, y únicamente dentro del recuadro — así el
+// operario decide qué se lee y no se cuela el QR de la carretilla de al lado.
 let scanStream = null;
-let scanRAF = null;
+let scanDetector = null;
+
+function scanHint(texto, clase) {
+  const el = document.getElementById('scan-hint');
+  el.textContent = texto;
+  el.className = 'scan-hint' + (clase ? ' ' + clase : '');
+}
 
 async function startScan() {
   const msg = document.getElementById('scan-msg');
@@ -2705,30 +2727,73 @@ async function startScan() {
   const video = document.getElementById('scan-video');
   video.srcObject = scanStream;
   document.getElementById('scan-code2').value = '';
+  document.getElementById('scan-disparar').disabled = false;
+  scanHint('Encuadra el QR en el recuadro y pulsa Disparar');
   document.getElementById('scan-modal').classList.add('open');
   // Solo códigos QR: ignoramos los códigos de barras 1D/2D
-  let detector;
   try {
-    detector = new BarcodeDetector({ formats: ['qr_code'] });
+    scanDetector = new BarcodeDetector({ formats: ['qr_code'] });
   } catch (e) {
-    detector = new BarcodeDetector();
+    scanDetector = new BarcodeDetector();
   }
-  const loop = async () => {
-    if (!scanStream) return;
-    try {
-      const codes = await detector.detect(video);
-      const qr = codes.find(c => c.format === 'qr_code');
-      if (qr) {
-        const value = qr.rawValue;
-        stopScan();
-        if (navigator.vibrate) navigator.vibrate(60);
-        doBuscar(value);
-        return;
-      }
-    } catch (e) { /* frame aún no listo */ }
-    scanRAF = requestAnimationFrame(loop);
-  };
-  video.onloadedmetadata = () => loop();
+}
+
+// Recorta el fotograma actual a la zona del recuadro. El vídeo se pinta con
+// object-fit: cover, así que hay que deshacer ese recorte para pasar de
+// coordenadas de pantalla a píxeles reales del fotograma.
+function recorteROI(video) {
+  const rv = video.getBoundingClientRect();
+  const rr = document.getElementById('scan-roi').getBoundingClientRect();
+  const escala = Math.max(rv.width / video.videoWidth, rv.height / video.videoHeight);
+  const sobraX = (video.videoWidth * escala - rv.width) / 2;
+  const sobraY = (video.videoHeight * escala - rv.height) / 2;
+
+  // Se recorta un poco más ancho que el recuadro: los lectores de QR necesitan
+  // un margen en blanco alrededor del código y, si el operario lo encuadra
+  // justo, un recorte a ras del borde no se lee.
+  const margen = 0.06;
+  const anchoROI = rr.width * (1 + margen * 2);
+  const altoROI = rr.height * (1 + margen * 2);
+
+  const acotar = (v, min, max) => Math.max(min, Math.min(max, v));
+  const x = acotar((rr.left - rv.left - rr.width * margen + sobraX) / escala, 0, video.videoWidth);
+  const y = acotar((rr.top - rv.top - rr.height * margen + sobraY) / escala, 0, video.videoHeight);
+  const w = acotar(anchoROI / escala, 1, video.videoWidth - x);
+  const h = acotar(altoROI / escala, 1, video.videoHeight - y);
+
+  const lienzo = document.createElement('canvas');
+  lienzo.width = Math.round(w);
+  lienzo.height = Math.round(h);
+  lienzo.getContext('2d').drawImage(video, x, y, w, h, 0, 0, lienzo.width, lienzo.height);
+  return lienzo;
+}
+
+async function dispararScan() {
+  const video = document.getElementById('scan-video');
+  const boton = document.getElementById('scan-disparar');
+  if (!scanStream || !scanDetector) return;
+  if (!video.videoWidth) { scanHint('La cámara aún no está lista, espera un segundo', 'fail'); return; }
+
+  boton.disabled = true;
+  document.getElementById('scan-viewport').classList.add('disparando');
+  scanHint('Leyendo…');
+  try {
+    const codes = await scanDetector.detect(recorteROI(video));
+    const qr = codes.find(c => c.format === 'qr_code') || codes[0];
+    if (qr && qr.rawValue) {
+      scanHint('✔ Código leído', 'ok');
+      if (navigator.vibrate) navigator.vibrate(60);
+      const value = qr.rawValue;
+      stopScan();
+      doBuscar(value);
+      return;
+    }
+    scanHint('No se ve ningún QR dentro del recuadro — acércate y vuelve a disparar', 'fail');
+  } catch (e) {
+    scanHint('No se pudo leer el fotograma, inténtalo otra vez', 'fail');
+  }
+  document.getElementById('scan-viewport').classList.remove('disparando');
+  boton.disabled = false;
 }
 
 function buscarDesdeScanner() {
@@ -2742,12 +2807,12 @@ document.getElementById('scan-code2').addEventListener('keydown', e => {
 });
 
 function stopScan() {
-  if (scanRAF) cancelAnimationFrame(scanRAF);
-  scanRAF = null;
   if (scanStream) {
     scanStream.getTracks().forEach(t => t.stop());
     scanStream = null;
   }
+  scanDetector = null;
+  document.getElementById('scan-viewport').classList.remove('disparando');
   document.getElementById('scan-modal').classList.remove('open');
 }
 
@@ -3387,7 +3452,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
