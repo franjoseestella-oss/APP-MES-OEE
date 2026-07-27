@@ -1722,6 +1722,8 @@
       <div class="test-result" id="push-result" role="status"></div>
       <button class="btn" onclick="probarPushServidor()" style="margin-top:8px">📡 Probar envío desde el servidor</button>
       <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar aviso (solo local)</button>
+      <button class="btn danger" onclick="repararPush()" style="margin-top:8px">🛠 Reparar notificaciones</button>
+      <div class="form-hint">Borra la suscripción, el service worker y la caché de la app, y lo vuelve a montar todo desde cero. Úsalo si al activar las notificaciones sale «push service error»: suele ser un registro viejo que se quedó colgado.</div>
       <button class="btn danger" onclick="diagPush()" style="margin-top:8px">🩺 Diagnóstico de notificaciones</button>
       <pre id="diag-push" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--card-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:10px;max-height:50vh;overflow:auto"></pre>
       <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso.<br>El botón <b>del servidor</b> recorre la cadena entera y es el que de verdad comprueba que las alarmas llegarán; el <b>local</b> solo dibuja un aviso en este móvil para ver cómo se ve.</div>
@@ -3716,7 +3718,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -3993,6 +3995,89 @@ async function probarPushServidor() {
   } catch (e) {
     res.textContent = '✖ No se pudo probar: ' + e.message;
     res.className = 'test-result fail';
+  }
+}
+
+// Reparación a fondo de las notificaciones.
+//
+// "Registration failed - push service error" con permiso concedido y clave
+// válida suele ser un registro antiguo que se quedó colgado en el móvil: pasó
+// mientras el servidor regeneraba las claves VAPID en cada reinicio, así que
+// muchos móviles tienen un alta vieja apuntando a una clave que ya no existe.
+// Chrome no la rehace solo, y desde la app no se puede tocar Play Services;
+// lo que sí se puede es tirar abajo todo lo nuestro (suscripción, service
+// worker y caché) para que el navegador lo vuelva a crear limpio.
+async function repararPush() {
+  const out = document.getElementById('diag-push');
+  const l = [];
+  const pinta = () => { out.textContent = l.join('\n'); };
+  const { url } = cfg();
+  l.push('Reparando…'); pinta();
+
+  try {
+    // 1. Quitar la suscripción, en el móvil y en el servidor
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) {
+      const s = await r.pushManager.getSubscription().catch(() => null);
+      if (s) {
+        if (url) {
+          await fetch(url + '/api/v1/push/unsubscribe', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ endpoint: s.endpoint }),
+          }).catch(() => {});
+        }
+        await s.unsubscribe().catch(() => {});
+      }
+    }
+    l.push('1. Suscripción anterior eliminada (' + regs.length + ' registro/s)'); pinta();
+
+    // 2. Fuera el service worker y la caché
+    for (const r of regs) await r.unregister().catch(() => {});
+    if (window.caches) {
+      for (const k of await caches.keys()) await caches.delete(k);
+    }
+    localStorage.removeItem('ln_push_key');
+    l.push('2. Service worker y caché borrados'); pinta();
+
+    // 3. Montarlo otra vez
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    l.push('3. Service worker reinstalado'); pinta();
+
+    // 4. Permiso y alta nueva
+    const permiso = await Notification.requestPermission();
+    if (permiso !== 'granted') {
+      l.push('4. Permiso de notificaciones: ' + permiso + ' → no se puede continuar'); pinta();
+      return;
+    }
+    const keyResp = await fetch(url + '/api/v1/push/vapid-public-key', { headers: authHeaders() });
+    const { public_key } = await keyResp.json();
+    if (!public_key) { l.push('4. El servidor no devuelve clave VAPID'); pinta(); return; }
+
+    const sub = await suscribirConReintentos(reg, public_key);
+    await fetch(url + '/api/v1/push/subscribe', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(sub.toJSON()),
+    });
+    localStorage.setItem('ln_push_on', '1');
+    localStorage.setItem('ln_push_key', public_key);
+    l.push('4. Alta nueva OK (' + new URL(sub.endpoint).host + ')');
+    l.push('');
+    l.push('LISTO. Pulsa ahora "Probar envío desde el servidor".');
+    pinta();
+    await updatePushStatusUI();
+  } catch (e) {
+    l.push('');
+    l.push('FALLA → ' + e.name + ': ' + e.message);
+    l.push('');
+    l.push('Si sigue igual, hazlo a mano en el móvil:');
+    l.push('  Chrome → ⋮ → Configuración → Configuración de sitios →');
+    l.push('  appmesoee.vercel.app → "Borrar y restablecer".');
+    l.push('  Luego desinstala la app de la pantalla de inicio y vuelve a instalarla.');
+    l.push('Si aun así falla, es Servicios de Google Play del terminal.');
+    pinta();
   }
 }
 
