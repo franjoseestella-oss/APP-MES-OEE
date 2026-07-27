@@ -9,6 +9,8 @@ ni compilación, con el código de colores Logisnext HMI.
 | Archivo | Descripción |
 |---------|-------------|
 | `index.html` | La aplicación completa (HTML + CSS + JS en un solo archivo) |
+| `sw.js` | Service worker: caché de la interfaz y notificaciones push |
+| `desplegar-swa.ps1` | Publica la app en la Static Web App de Azure (ver *Publicación*) |
 
 ## Qué muestra
 
@@ -81,25 +83,41 @@ versión nueva.
 
 ## Requisitos
 
-- El backend MES/OEE (repositorio `MES-OEE-jaula`) ejecutándose con los endpoints
-  `/api/v1/alerts/summary` y `/api/v1/alerts/maintenance` (rama
-  `claude/kpi-maintenance-alerts-app-v8t6f2`).
+- El backend MES/OEE (repositorio `MES-OEE-jaula`, rama `main`) ejecutándose con
+  los endpoints `/api/v1/alerts/summary`, `/api/v1/alerts/maintenance` y
+  `/api/v1/plan/board`.
 - El móvil en la **misma red** que el servidor.
 
-## Publicación en Vercel
+## Publicación
 
-1. En [vercel.com](https://vercel.com): *Sign in with GitHub* → **Add New →
-   Project** → importa este repositorio (`APP-MES-OEE`).
-2. Framework preset: **Other**. Sin build ni configuración → **Deploy**.
-3. La app queda en `https://app-mes-oee.vercel.app` y se redespliega sola con
-   cada commit.
+La app se sirve desde **dos sitios** y hay que dejar los dos en la misma
+versión, o unos usuarios ven la app vieja y otros la nueva:
+
+| Destino | Quién lo usa | Cómo se publica |
+|---------|--------------|-----------------|
+| GitHub Pages · `franjoseestella-oss.github.io/APP-MES-OEE` | Móvil | **Automático** en cada push a `main` ([pages.yml](.github/workflows/pages.yml)) |
+| Azure Static Web App · `brave-sky-0bd4aa503.7.azurestaticapps.net` | PC | **Manual**: `powershell -ExecutionPolicy Bypass -File .\desplegar-swa.ps1` |
+
+La Static Web App se creó con la CLI (provider `SwaCli`), no enlazada a
+GitHub, así que no se entera de los push. Automatizarla con Actions requiere
+guardar su token de despliegue como secreto `AZURE_STATIC_WEB_APPS_API_TOKEN`
+del repositorio; mientras eso no exista, **ejecuta el script después de cada
+push**.
+
+Para comprobar qué versión sirve cada uno, busca `APP_VERSION` en el
+`index.html` publicado (la app también la muestra en Ajustes).
 
 ## Conectar con el backend (HTTPS obligatorio)
 
-Vercel sirve por HTTPS, así que el backend también debe ser accesible por
-HTTPS (el navegador bloquea llamadas HTTP desde páginas HTTPS). El
-`docker-compose.yml` del repositorio `MES-OEE-jaula` incluye el servicio
-`cloudflared` que crea ese túnel:
+Los dos sitios publicados van por HTTPS, así que el backend también debe ser
+accesible por HTTPS (el navegador bloquea llamadas HTTP desde páginas HTTPS).
+En producción se usa la Web App de Azure `mes-backend-cae91d57`
+(`https://mes-backend-cae91d57.azurewebsites.net`), que se configura en la app
+desde **Ajustes**.
+
+Para exponer un backend local por HTTPS, el `docker-compose.yml` del
+repositorio `MES-OEE-jaula` incluye el servicio `cloudflared` que crea un
+túnel:
 
 ```bash
 docker-compose up -d cloudflared
@@ -116,7 +134,7 @@ el icono como una app.
 > [Cloudflare Zero Trust](https://one.dash.cloudflare.com) (gratis) y usa
 > `tunnel run --token TU_TOKEN` en el servicio cloudflared.
 
-## Uso solo en red local (alternativa sin Vercel)
+## Uso solo en red local (alternativa sin publicar)
 
 También puedes abrir `index.html` directamente en el móvil (envíatelo por
 correo/USB) y en Ajustes poner la IP local del servidor
