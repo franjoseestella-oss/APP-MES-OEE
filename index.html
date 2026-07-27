@@ -1720,8 +1720,8 @@
       <div class="sec-title">Notificaciones</div>
       <button class="btn" id="btn-push" onclick="togglePush()">Activar notificaciones push</button>
       <div class="test-result" id="push-result" role="status"></div>
-      <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar notificación</button>
-      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso. Con «Probar» verás al momento cómo llega.</div>
+      <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar aviso (local)</button>
+      <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso.<br><b>Ojo:</b> «Probar» solo dibuja un aviso en este móvil — comprueba que las notificaciones se ven, pero <b>no</b> que el servidor pueda mandarlas.</div>
       <button class="btn" id="btn-avisos" onclick="toggleAvisos()" style="margin-top:14px">Activar sonido y vibración</button>
       <div class="form-hint">Con la app abierta, pita y vibra cuando aparece una alarma activa nueva de mantenimiento.</div>
     </section>
@@ -3708,12 +3708,12 @@ function enterApp(user) {
   if (wakeOn()) acquireWake();
   refreshAll();
   startAutoRefresh();
-  registerServiceWorker().then(() => updatePushStatusUI());
+  registerServiceWorker().then(() => reengancharPush()).then(() => updatePushStatusUI());
   if (hash === 'andon') setTimeout(entrarAndon, 400);
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -3866,6 +3866,8 @@ async function togglePush() {
         body: JSON.stringify({ endpoint: existing.endpoint }),
       }).catch(() => {});
       await existing.unsubscribe();
+      localStorage.removeItem('ln_push_on');
+      localStorage.removeItem('ln_push_key');
       await updatePushStatusUI();
       return;
     }
@@ -3892,12 +3894,59 @@ async function togglePush() {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(sub.toJSON()),
     });
+    localStorage.setItem('ln_push_on', '1');
+    localStorage.setItem('ln_push_key', public_key);
 
     await updatePushStatusUI();
   } catch (e) {
     res.textContent = '✖ No se pudo activar: ' + e.message;
     res.className = 'test-result fail';
   }
+}
+
+// ── PUSH: REENGANCHE AUTOMÁTICO ──
+// El backend guarda las suscripciones en un fichero dentro del contenedor, que
+// es efímero: cada reinicio del App Service se lleva por delante la lista de
+// suscritos (y, si no hay VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY configuradas, tam-
+// bién el par de claves). El móvil se queda "suscrito" de cara al navegador
+// pero el servidor ya no sabe a quién avisar, así que las alarmas no llegan y
+// no hay ningún aviso de que algo va mal.
+//
+// Por eso, al abrir la app se vuelve a registrar la suscripción: es idempotente
+// (el servidor deduplica por endpoint) y deja las notificaciones arregladas
+// solas. Si además la clave pública del servidor ha cambiado, la suscripción
+// vieja ya no vale para nada y se rehace con la nueva.
+async function reengancharPush() {
+  if (!pushSupported() || localStorage.getItem('ln_push_on') !== '1') return;
+  const { url } = cfg();
+  if (!url || !getSession()) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const keyResp = await fetch(url + '/api/v1/push/vapid-public-key', { headers: authHeaders() });
+    if (!keyResp.ok) return;
+    const { public_key } = await keyResp.json();
+    if (!public_key) return;
+
+    let sub = await reg.pushManager.getSubscription();
+    const claveVieja = localStorage.getItem('ln_push_key');
+    if (sub && claveVieja && claveVieja !== public_key) {
+      await sub.unsubscribe().catch(() => {});
+      sub = null;
+    }
+    if (!sub) {
+      if (Notification.permission !== 'granted') return;   // sin permiso no se puede rehacer
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(public_key),
+      });
+    }
+    await fetch(url + '/api/v1/push/subscribe', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(sub.toJSON()),
+    });
+    localStorage.setItem('ln_push_key', public_key);
+  } catch (e) { /* se reintenta la próxima vez que se abra la app */ }
 }
 
 // ── ASISTENTE MES/OEE (usa el agente del backend: POST /api/v1/chat) ──
@@ -4980,7 +5029,11 @@ function updateWakeUI() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && wakeOn()) acquireWake();
+  if (document.hidden) return;
+  if (wakeOn()) acquireWake();
+  // Si el servidor se reinició mientras la app estaba en segundo plano, aquí se
+  // recupera la suscripción push sin que el operario tenga que hacer nada.
+  reengancharPush();
 });
 
 // ── INSTALAR COMO APP ──
