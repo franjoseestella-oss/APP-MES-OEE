@@ -1722,6 +1722,8 @@
       <div class="test-result" id="push-result" role="status"></div>
       <button class="btn" onclick="probarPushServidor()" style="margin-top:8px">📡 Probar envío desde el servidor</button>
       <button class="btn danger" onclick="probarNotificacion()" style="margin-top:8px">🔔 Probar aviso (solo local)</button>
+      <button class="btn danger" onclick="diagPush()" style="margin-top:8px">🩺 Diagnóstico de notificaciones</button>
+      <pre id="diag-push" style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:var(--card-2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:10px;max-height:50vh;overflow:auto"></pre>
       <div class="form-hint">Recibe un aviso en el móvil en cuanto salte una alarma nueva de mantenimiento, <b>aunque tengas la app cerrada</b> (el servidor vigila las alarmas cada 15 s). La primera vez el navegador te pedirá permiso.<br>El botón <b>del servidor</b> recorre la cadena entera y es el que de verdad comprueba que las alarmas llegarán; el <b>local</b> solo dibuja un aviso en este móvil para ver cómo se ve.</div>
       <button class="btn" id="btn-avisos" onclick="toggleAvisos()" style="margin-top:14px">Activar sonido y vibración</button>
       <div class="form-hint">Con la app abierta, pita y vibra cuando aparece una alarma activa nueva de mantenimiento.</div>
@@ -3714,7 +3716,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -3900,10 +3902,7 @@ async function togglePush() {
     const { public_key } = await keyResp.json();
     if (!public_key) throw new Error('El servidor no tiene notificaciones configuradas');
 
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(public_key),
-    });
+    const sub = await suscribirConReintentos(reg, public_key);
 
     await fetch(url + '/api/v1/push/subscribe', {
       method: 'POST',
@@ -3918,6 +3917,28 @@ async function togglePush() {
     res.innerHTML = explicarFalloPush(e);
     res.className = 'test-result fail';
   }
+}
+
+// El alta contra el servicio de push (FCM/WNS) falla a veces de forma pasajera
+// —sobre todo la primera vez o con la red recién cambiada— y a la segunda entra.
+// Tres intentos separados antes de dar el fallo por bueno.
+async function suscribirConReintentos(reg, publicKey) {
+  const espera = ms => new Promise(r => setTimeout(r, ms));
+  let ultimo = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    } catch (e) {
+      ultimo = e;
+      // Un permiso denegado no mejora reintentando: se corta ya.
+      if (/denied|NotAllowed/i.test(e.name + e.message)) break;
+      await espera(1200 * (i + 1));
+    }
+  }
+  throw ultimo;
 }
 
 // "Registration failed - push service error" y compañía vienen del navegador,
@@ -3973,6 +3994,72 @@ async function probarPushServidor() {
     res.textContent = '✖ No se pudo probar: ' + e.message;
     res.className = 'test-result fail';
   }
+}
+
+// Diagnóstico de notificaciones: vuelca los hechos del dispositivo y del
+// servidor para no tener que adivinar por qué no llegan los avisos. Intenta
+// además una suscripción de verdad, que es donde suele romperse.
+async function diagPush() {
+  const out = document.getElementById('diag-push');
+  const l = [];
+  const si = v => (v ? 'sí' : 'NO');
+  out.textContent = 'Comprobando…';
+
+  l.push('App ' + APP_VERSION);
+  l.push('Navegador: ' + navigator.userAgent);
+  l.push('Instalada como app: ' + si(matchMedia('(display-mode: standalone)').matches));
+  l.push('HTTPS: ' + si(location.protocol === 'https:') + '  (' + location.host + ')');
+  l.push('Soporta service worker: ' + si('serviceWorker' in navigator));
+  l.push('Soporta PushManager: ' + si('PushManager' in window));
+  l.push('Soporta Notification: ' + si('Notification' in window));
+  l.push('Permiso de notificaciones: ' + (('Notification' in window) ? Notification.permission : '—'));
+
+  let reg = null;
+  try {
+    reg = await navigator.serviceWorker.getRegistration();
+    l.push('Service worker: ' + (reg ? 'registrado (' + reg.scope + ')' : 'NO registrado'));
+    if (reg) l.push('  activo: ' + si(reg.active) + '  esperando: ' + si(reg.waiting));
+  } catch (e) { l.push('Service worker: error ' + e.message); }
+
+  let sub = null;
+  try {
+    sub = reg ? await reg.pushManager.getSubscription() : null;
+    l.push('Suscripción en este móvil: ' + (sub ? new URL(sub.endpoint).host : 'ninguna'));
+  } catch (e) { l.push('Suscripción: error ' + e.message); }
+
+  const { url } = cfg();
+  l.push('Servidor MES: ' + (url || '(sin configurar)'));
+  if (url && getSession()) {
+    try {
+      const r = await fetch(url + '/api/v1/push/vapid-public-key', { headers: authHeaders() });
+      const d = await r.json();
+      l.push('Clave VAPID del servidor: ' + (d.public_key ? d.public_key.slice(0, 16) + '… (' + d.public_key.length + ' car.)' : 'VACÍA'));
+    } catch (e) { l.push('Clave VAPID: error ' + e.message); }
+    try {
+      const r = await fetch(url + '/api/v1/push/estado', { headers: authHeaders() });
+      const d = await r.json();
+      l.push('Dispositivos suscritos en el servidor: ' + d.suscritos);
+    } catch (e) { l.push('Estado del servidor: error ' + e.message); }
+  } else {
+    l.push('(sin sesión iniciada: no se consulta al servidor)');
+  }
+
+  // La prueba que de verdad importa: intentar suscribirse aquí y ahora
+  if (reg && 'PushManager' in window && !sub) {
+    try {
+      const r = await fetch(url + '/api/v1/push/vapid-public-key', { headers: authHeaders() });
+      const { public_key } = await r.json();
+      const nueva = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(public_key),
+      });
+      l.push('Alta en el servicio de push: OK (' + new URL(nueva.endpoint).host + ')');
+    } catch (e) {
+      l.push('Alta en el servicio de push: FALLA → ' + e.name + ': ' + e.message);
+    }
+  }
+
+  out.textContent = l.join('\n');
 }
 
 // ── PUSH: REENGANCHE AUTOMÁTICO ──
