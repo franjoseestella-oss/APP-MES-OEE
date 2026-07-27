@@ -1,0 +1,14 @@
+[
+  { "fecha": "20260701", "secuencia": "0230", "bastidor": "SFB310703300", "modelo": "XL50", "resultado": "OK" },
+  { "fecha": "20260701", "secuencia": "0231", "bastidor": "SF34B-60021", "modelo": "FGLE20CT", "resultado": "OK" },
+  { "fecha": "20260726", "secuencia": "0233", "bastidor": "SF14H-00290", "modelo": "FDE30T", "resultado": "NOK" },
+  { "fecha": "20260727", "secuencia": "0245", "bastidor": "SF14H-50291", "modelo": "FDE35AT", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0246", "bastidor": "SFB08E704796", "modelo": "MX225C", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0247", "bastidor": "SFB09E704797", "modelo": "MX230C", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0248", "bastidor": "ST13H-50084", "modelo": "FGLE35AT", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0249", "bastidor": "SFB09E704798", "modelo": "MX230C", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0250", "bastidor": "SF34B-40022", "modelo": "FGLE18T", "resultado": "OK" },
+  { "fecha": "20260727", "secuencia": "0251", "bastidor": "SFB09E704799", "modelo": "MX235L", "resultado": null },
+  { "fecha": "20260728", "secuencia": "0252", "bastidor": "ST14H-50292", "modelo": "FDE35AT", "resultado": null },
+  { "fecha": "20260728", "secuencia": "0253", "bastidor": "SFB310703347", "modelo": "XL55L", "resultado": null }
+]

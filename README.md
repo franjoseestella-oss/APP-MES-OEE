@@ -11,6 +11,7 @@ ni compilación, con el código de colores Logisnext HMI.
 | `index.html` | La aplicación completa (HTML + CSS + JS en un solo archivo) |
 | `sw.js` | Service worker: caché de la interfaz y notificaciones push |
 | `desplegar-swa.ps1` | Publica la app en la Static Web App de Azure (ver *Publicación*) |
+| `pruebas/` | Pruebas del escáner, la lectura del QR y las notificaciones (`node pruebas/ejecutar.js`) |
 
 ## Qué muestra
 
