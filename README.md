@@ -68,9 +68,11 @@ de resultados **interactivo** (tocar OK/NOK abre Calidad filtrado) —
 construido con el endpoint `/alerts/sequences` por rango de fechas.
 En **Producción** están la **proyección a fin de plan** (ritmo real de
 bastidores/h y hora estimada de fin), el buscador del listado de secuencias
-y el botón 🔊 para **escuchar el resumen por voz** (manos libres). La app se
-navega también **deslizando entre pestañas**, avisa cuando los datos
-envejecen y en tablet/apaisado se reparte en **dos columnas**.
+y el botón 🔊 para **escuchar el resumen por voz** (manos libres). Se cambia
+de pantalla **solo con los botones de la barra de abajo** (no se navega
+deslizando: en planta se cambiaba de pestaña sin querer al desplazar los
+listados). La app avisa cuando los datos envejecen y en tablet/apaisado se
+reparte en **dos columnas**.
 
 Los datos se actualizan automáticamente cada 30 segundos (en pausa cuando la
 app está en segundo plano; al volver a primer plano o recuperar la red se

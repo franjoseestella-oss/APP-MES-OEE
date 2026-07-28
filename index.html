@@ -2468,13 +2468,20 @@ function pintarSeqList(seqs) {
 }
 
 // ── BOTTOM SHEET ──
+// sheetSeqToken cambia cada vez que se abre o se cierra una ficha: así el
+// detalle que llega tarde del servidor no repinta una ficha que ya no es la
+// que se está viendo.
+let sheetSeqToken = 0;
+
 function openSheet(html) {
+  sheetSeqToken++;
   document.getElementById('sheet-content').innerHTML = html;
   document.getElementById('sheet-overlay').classList.add('open');
   document.getElementById('sheet').classList.add('open');
 }
 
 function closeSheet() {
+  sheetSeqToken++;
   document.getElementById('sheet-overlay').classList.remove('open');
   document.getElementById('sheet').classList.remove('open');
 }
@@ -2567,8 +2574,35 @@ async function forzarResultado(nuevo) {
   }
 }
 
+// Abre la ficha de una secuencia. El listado de /sequences solo trae el
+// resumen (bastidor, estado, horas), así que si las pruebas ya están
+// registradas se pide además /sequence-detail para que salgan los pasos y los
+// tiempos medidos. La ficha se pinta al momento con lo que hay y se vuelve a
+// pintar sola en cuanto llega el detalle.
 function openSeqSheet(s) {
   sheetSeq = s;
+  openSheet(seqSheetHtml(s));
+  const token = sheetSeqToken;
+  const st = seqEstado(s);
+  const yaTieneDetalle = Array.isArray(s.pasos) && s.pasos.length;
+  const bastidor = seqBastidor(s);
+  if (st === 'pend' || yaTieneDetalle || !bastidor || bastidor === '—') return;
+  (async () => {
+    let detail = null;
+    try {
+      detail = await api('/sequence-detail', { bastidor });
+    } catch (e) { /* sin detalle en el servidor: se queda el resumen */ }
+    if (!detail || token !== sheetSeqToken) return;
+    const merged = Object.assign({}, s, detail, {
+      resultado: ['OK', 'NOK'].includes(String(detail.estado).toUpperCase())
+        ? String(detail.estado).toUpperCase() : s.resultado,
+    });
+    sheetSeq = merged;
+    document.getElementById('sheet-content').innerHTML = seqSheetHtml(merged);
+  })();
+}
+
+function seqSheetHtml(s) {
   const st = seqEstado(s);
   const resultado = st === 'done' ? 'OK' : st === 'nok' ? 'NOK' : st === 'curso' ? '● …' : '—';
   const resultadoChip = st === 'done' ? 'ok' : st === 'nok' ? 'nok' : st === 'curso' ? 'cyan' : '';
@@ -2602,7 +2636,7 @@ function openSeqSheet(s) {
     (rDesc ?? '—') + ' / ' + (tDesc ?? '—') +
     (s.desviacion_descenso_pct != null ? ' (' + (s.desviacion_descenso_pct > 0 ? '+' : '') + s.desviacion_descenso_pct + ' %)' : '')]);
 
-  openSheet(`
+  return `
     <div class="sq-${st}">
       <div class="sh-head">
         <span class="sh-title">${esc(seqBastidor(s))}</span>
@@ -2625,7 +2659,7 @@ function openSeqSheet(s) {
       ${canForce ? `<button class="btn ${nuevoRes === 'NOK' ? 'danger' : ''}" id="btn-forzar"
         style="margin-top:18px" onclick="forzarResultado('${nuevoRes}')">Forzar a ${nuevoRes}</button>
         <div class="form-hint" style="text-align:center">Cambia el resultado de las pruebas en el registro del MES.</div>` : ''}
-    </div>`);
+    </div>`;
 }
 
 function showNokSheet() {
@@ -3778,7 +3812,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
@@ -5532,35 +5566,10 @@ async function descargarPdf() {
   showToast('📄 Informe descargado');
 }
 
-// ── NAVEGACIÓN DESLIZANDO ENTRE PESTAÑAS ──
-(function () {
-  let x0 = null, y0 = null;
-  document.addEventListener('touchstart', e => {
-    x0 = null;
-    if (e.touches.length !== 1) return;
-    if (e.target.closest('.filter-row, .sheet, #andon, .scan-modal, input, textarea, select, .chat-box, .plan-row, svg, #print-area')) return;
-    x0 = e.touches[0].clientX;
-    y0 = e.touches[0].clientY;
-  }, { passive: true });
-  document.addEventListener('touchend', e => {
-    if (x0 === null) return;
-    const dx = e.changedTouches[0].clientX - x0;
-    const dy = e.changedTouches[0].clientY - y0;
-    x0 = null;
-    if (Math.abs(dx) < 70 || Math.abs(dy) > 50) return;
-    if (document.getElementById('sheet').classList.contains('open')) return;
-    if (document.getElementById('andon').classList.contains('open')) return;
-    const s = getSession();
-    if (!s) return;
-    const vs = allowedViews(s.nivel_usuario).concat('ajustes');
-    const actual = vs.find(v => document.getElementById('view-' + v).classList.contains('active'));
-    const j = vs.indexOf(actual) + (dx < 0 ? 1 : -1);
-    if (actual && j >= 0 && j < vs.length) {
-      showView(vs[j]);
-      if (navigator.vibrate) navigator.vibrate(8);
-    }
-  }, { passive: true });
-})();
+// ── NAVEGACIÓN: SOLO CON LOS BOTONES DE ABAJO ──
+// Se quitó el cambio de pestaña deslizando el dedo: en planta se cambiaba de
+// pantalla sin querer al desplazar los listados. Para navegar hay que pulsar
+// los botones de la barra inferior.
 
 // ── BUSCADOR EN EL REGISTRO DE ALARMAS ──
 let lastAlarms = [];
