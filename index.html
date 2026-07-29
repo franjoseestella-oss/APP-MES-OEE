@@ -2523,14 +2523,20 @@ function fmtSeg(v) {
   return v === null || v === undefined ? null : (+v).toFixed(1) + ' s';
 }
 
+// El ERP da los tiempos de los pasos en centésimas de segundo: 364 son 3,6 s
+// (segundos y la primera décima, con coma decimal como los muestra el ERP).
+function fmtDecimas(v) {
+  return v === null || v === undefined ? null : (+v / 100).toFixed(1).replace('.', ',');
+}
+
 // Pasos individuales de la prueba de la jaula (medido frente a rango teórico)
 function pasosRows(pasos) {
   if (!Array.isArray(pasos) || !pasos.length) return '';
   return '<div class="sec-title" style="margin-top:16px">Pasos de la prueba</div>' +
     pasos.map(p => {
       const rango = p.min_s != null && p.max_s != null
-        ? 'rango ' + (+p.min_s).toFixed(1) + '–' + (+p.max_s).toFixed(1) + ' s' : '';
-      const medido = p.medido_s != null ? (+p.medido_s).toFixed(1) + ' s' : '—';
+        ? 'rango ' + fmtDecimas(p.min_s) + '–' + fmtDecimas(p.max_s) + ' s' : '';
+      const medido = p.medido_s != null ? fmtDecimas(p.medido_s) + ' s' : '—';
       const badge = p.ok === true
         ? '<span style="color:var(--green);font-weight:700">✔ OK</span>'
         : p.ok === false
@@ -3812,7 +3818,7 @@ function enterApp(user) {
 }
 
 // Aviso cuando el service worker instala una versión nueva de la app
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v32';
 (function () {
   const el = document.getElementById('app-version');
   if (el) el.textContent = APP_VERSION;
