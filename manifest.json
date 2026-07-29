@@ -1,0 +1,38 @@
+{
+  "name": "Logisnext JAULA",
+  "short_name": "Logisnext",
+  "description": "Alertas KPI, calidad y alarmas de mantenimiento del MES/OEE de Logisnext.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EFF2F3",
+  "theme_color": "#56737F",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Panel del turno",
+      "short_name": "Panel",
+      "url": "./index.html#panel",
+      "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Calidad — comprobar bastidor",
+      "short_name": "Calidad",
+      "url": "./index.html#calidad",
+      "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Panel de planta (Andon)",
+      "short_name": "Andon",
+      "url": "./index.html#andon",
+      "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
